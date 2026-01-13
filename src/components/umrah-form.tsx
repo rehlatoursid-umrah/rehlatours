@@ -170,57 +170,44 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
   }, [])
 
   const onSubmitHandler = handleSubmit(async (data: any) => {
-  console.log('=== FORM SUBMIT HANDLER START ===')
-  console.log('Form data received:', data)
+    console.log('=== FORM SUBMIT HANDLER START ===')
+    console.log('Form data received:', data)
 
-  try {
-    clearErrors()
-    console.log('Calling submitUmrahForm...')
+    try {
+      clearErrors()
+      console.log('Calling submitUmrahForm...')
 
-    const result = await submitUmrahForm(data as UmrahFormData)
+      const result = await submitUmrahForm(data as UmrahFormData)
 
-    console.log('Submit result:', result)
+      console.log('Submit result:', result)
 
-    if (!result.success) {
-      toast.error('Submission Gagal', {
-        description: result.error || 'Terjadi kesalahan yang tidak terduga',
-        duration: 5000,
-      })
-    } else {
-      toast.success('Pendaftaran Berhasil!', {
-        description: result.data?.message || 'Pendaftaran Anda telah diterima.',
-        duration: 3000,
-      })
+      if (!result.success) {
+        toast.error('Submission Gagal', {
+          description: result.error || 'Terjadi kesalahan yang tidak terduga',
+          duration: 5000,
+        })
+      } else {
+        toast.success('Pendaftaran Berhasil!', {
+          description: result.data?.message || 'Pendaftaran Anda telah diterima.',
+          duration: 3000,
+        })
 
-      // Reset form
-      form.reset()
+        // Reset form
+        form.reset()
 
-      // Redirect ke halaman sukses dengan data lengkap
-      setTimeout(() => {
-        const id = result.data?.id || ''
-        const bookingId = result.data?.booking_id || 'N/A'
-        const name = data.name || 'Guest'
-        const message = result.data?.message || 'Pendaftaran Anda telah diterima.'
-        
-        // Encode message untuk URL
-        const encodedMessage = encodeURIComponent(message)
-        
-        // Redirect dengan query params lengkap (sesuai yang dibutuhkan halaman success)
-        window.location.href = `/success?id=${id}&booking_id=${bookingId}&name=${encodeURIComponent(name)}&message=${encodedMessage}`
-      }, 2000)
-    }
-
-    console.log('=== FORM SUBMIT HANDLER SUCCESS ===')
-  } catch (error) {
-    console.log('=== FORM SUBMIT HANDLER ERROR ===')
-    console.error('Form submission error:', error)
-
-    toast.error('Error Tak Terduga', {
-      description: error instanceof Error ? error.message : 'Terjadi kesalahan tak terduga',
-      duration: 5000,
-    })
-  }
-})
+        // Redirect ke halaman sukses dengan data lengkap
+        setTimeout(() => {
+          const id = result.data?.id || ''
+          const bookingId = result.data?.booking_id || 'N/A'
+          const name = data.name || 'Guest'
+          const message = result.data?.message || 'Pendaftaran Anda telah diterima.'
+          
+          const encodedMessage = encodeURIComponent(message)
+          const encodedName = encodeURIComponent(name)
+          
+          window.location.href = `/success?id=${id}&booking_id=${bookingId}&name=${encodedName}&message=${encodedMessage}`
+        }, 2000)
+      }
 
       console.log('=== FORM SUBMIT HANDLER SUCCESS ===')
     } catch (error) {
@@ -837,7 +824,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
                   Mengirim...
                 </div>
               ) : (
-                <div className="flex items-center justify-center relative z-10"> 
+                <div className="flex items-center justify-center relative z-10">
                   <CreditCard className="w-6 h-6 mr-3" />
                   Kirim Pendaftaran
                 </div>
@@ -860,4 +847,5 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
     </div>
   )
 }
+
 
