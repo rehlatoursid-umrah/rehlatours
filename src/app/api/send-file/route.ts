@@ -140,14 +140,15 @@ export async function POST(request: NextRequest) {
 
     // Build multipart for WhatsApp API
     const whatsappForm = new FormData()
-    whatsappForm.append('phone', phone)
-    whatsappForm.append('caption', caption)
-    whatsappForm.append('file', fs.createReadStream(filePath), fileName)
-    whatsappForm.append('is_forwarded', String(is_forwarded))
-    whatsappForm.append('duration', String(duration))
+whatsappForm.append('phone', phone) // Format: 628xxx tanpa @s.whatsapp.net
+whatsappForm.append('caption', caption)
+whatsappForm.append('file', fs.createReadStream(filePath), {
+  filename: fileName,
+  contentType: 'application/pdf',
+})
 
     // Send to WhatsApp API
-    const url = `${whatsappEndpoint.replace(/\/$/, '')}/send/file`
+    const url = `${whatsappEndpoint.replace(/\/$/, '')}/send/document`
 
     const whatsappResponse = await axios.post(url, whatsappForm, {
       headers: {
