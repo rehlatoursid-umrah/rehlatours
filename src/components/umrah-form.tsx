@@ -189,9 +189,12 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
       } else {
         toast.success('Pendaftaran Berhasil!', {
           description: result.data?.message || 'Pendaftaran Anda telah diterima.',
-          duration: 5000,
+          duration: 3000,
         })
-      }
+         setTimeout(() => {
+    window.location.href = `/success?bookingId=${result.data?.booking_id}`
+  }, 2000)
+}
 
       console.log('=== FORM SUBMIT HANDLER SUCCESS ===')
     } catch (error) {
