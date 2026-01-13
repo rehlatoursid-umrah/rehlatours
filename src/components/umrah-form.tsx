@@ -837,7 +837,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
                   Mengirim...
                 </div>
               ) : (
-                <div className="flex items-center justify-center relative z-10">
+                <div className="flex items-center justify-center relative z-10"> 
                   <CreditCard className="w-6 h-6 mr-3" />
                   Kirim Pendaftaran
                 </div>
