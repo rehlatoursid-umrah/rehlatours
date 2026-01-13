@@ -596,7 +596,7 @@ function SuccessPageContent() {
                     onClick={() => window.open('https://wa.me/6281234567890', '_blank')}
                   >
                     <Phone className="w-5 h-5 mr-2 group-hover:animate-pulse" />
-                    WhatsApp: +62 812-3456-7890
+                    WhatsApp: +62 831-9732-1658
                   </Button>
                   <Button
                     variant="outline"
