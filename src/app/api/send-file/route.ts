@@ -89,12 +89,10 @@ export async function POST(request: NextRequest) {
     }
 
     const whatsappEndpoint = process.env.WHATSAPP_API_ENDPOINT
-    const whatsappUsername = process.env.WHATSAPP_API_USERNAME
-    const whatsappPassword = process.env.WHATSAPP_API_PASSWORD
 
-    if (!whatsappEndpoint || !whatsappUsername || !whatsappPassword) {
+    if (!whatsappEndpoint) {
       return NextResponse.json(
-        { success: false, error: 'WhatsApp API configuration missing' },
+        { success: false, error: 'WhatsApp API endpoint not configured' },
         { status: 500 },
       )
     }
@@ -135,7 +133,7 @@ export async function POST(request: NextRequest) {
     await fsp.writeFile(filePath, pdfBuffer as any)
     console.log('✅ PDF saved to:', filePath)
 
-    // Format phone: tambah @s.whatsapp.net
+    // Format phone: tambah @s.whatsapp.net kalau belum ada
     let formattedPhone = phone
     if (!phone.includes('@')) {
       formattedPhone = `${phone}@s.whatsapp.net`
@@ -143,12 +141,7 @@ export async function POST(request: NextRequest) {
 
     console.log('📱 Phone formatted:', phone, '→', formattedPhone)
 
-    // ✅ ENDPOINT YANG BENAR sesuai dokumentasi
-    const url = `${whatsappEndpoint.replace(/\/$/, '')}/send/file`
-    
-    console.log('🔄 Sending to WhatsApp API:', url)
-
-    // Build FormData
+    // Build FormData untuk WhatsApp API
     const whatsappForm = new FormData()
     whatsappForm.append('phone', formattedPhone)
     whatsappForm.append('caption', caption)
@@ -157,15 +150,16 @@ export async function POST(request: NextRequest) {
       contentType: 'application/pdf',
     })
 
+    const url = `${whatsappEndpoint.replace(/\/$/, '')}/send/file`
+    console.log('🔄 Sending to WhatsApp API:', url)
+
+    // ✅ PERBAIKAN: Tanpa authentication
     const whatsappResponse = await axios.post(url, whatsappForm, {
       headers: {
         ...whatsappForm.getHeaders(),
       },
-      auth: {
-        username: whatsappUsername,
-        password: whatsappPassword,
-      },
-      timeout: 45000, // 45 detik
+      // HAPUS auth - API tidak pakai authentication
+      timeout: 45000,
       maxContentLength: 50 * 1024 * 1024,
       maxBodyLength: 50 * 1024 * 1024,
       validateStatus: () => true,
