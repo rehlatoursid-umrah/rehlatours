@@ -9,7 +9,8 @@ import axios from 'axios'
 import { promises as fsp } from 'fs'
 import fs from 'fs'
 
-export const runtime = 'nodejs' // ensure Node.js runtime on Vercel
+export const runtime = 'nodejs'
+export const maxDuration = 60 // Vercel max duration 60 seconds
 
 // Legacy interface for backward compatibility
 interface LegacyBookingData {
@@ -22,7 +23,6 @@ interface LegacyBookingData {
   paymentMethod: string
 }
 
-// Convert legacy booking data to UmrahFormData
 function convertLegacyToUmrahData(legacyData: LegacyBookingData): UmrahFormData {
   return {
     name: legacyData.customerName || '',
@@ -85,10 +85,6 @@ export async function POST(request: NextRequest) {
       ((formData.get('caption') as string | null) ?? '') ||
       'Terima kasih atas pendaftaran Anda. Berikut adalah konfirmasi pendaftaran Anda.'
 
-    const is_forwarded = (formData.get('is_forwarded') as string | null) === 'true'
-    const durationRaw = (formData.get('duration') as string | null) || ''
-    const duration = Number.isFinite(Number(durationRaw)) ? Number(durationRaw) : 3600
-
     if (!phone) {
       return NextResponse.json({ success: false, error: 'Phone number is required' }, { status: 400 })
     }
@@ -130,6 +126,9 @@ export async function POST(request: NextRequest) {
     const pdfDocument = createElement(ConfirmationPDF, { formData: umrahFormData, bookingId })
     const pdfBuffer = await renderToBuffer(pdfDocument as any)
 
+    const pdfSizeKB = (pdfBuffer.byteLength / 1024).toFixed(2)
+    console.log(`📊 PDF size: ${pdfSizeKB} KB`)
+
     // TEMP DIR for Vercel serverless
     const tempDir = '/tmp'
     await fsp.mkdir(tempDir, { recursive: true })
@@ -141,7 +140,6 @@ export async function POST(request: NextRequest) {
     console.log('✅ PDF saved to:', filePath)
 
     // Format phone number untuk WhatsApp API
-    // go-whatsapp-web-multidevice biasanya perlu format: 628xxx@s.whatsapp.net
     let formattedPhone = phone
     if (!phone.includes('@')) {
       formattedPhone = `${phone}@s.whatsapp.net`
@@ -149,84 +147,104 @@ export async function POST(request: NextRequest) {
 
     console.log('📱 Phone formatted:', phone, '→', formattedPhone)
 
-    // Build multipart for WhatsApp API
-    const whatsappForm = new FormData()
-    whatsappForm.append('phone', formattedPhone) // PERBAIKAN: tambah @s.whatsapp.net
-    whatsappForm.append('caption', caption)
-    whatsappForm.append('file', fs.createReadStream(filePath), {
-      filename: fileName,
-      contentType: 'application/pdf',
-    })
-
-    // PERBAIKAN: Coba beberapa endpoint alternatif
-    // Endpoint go-whatsapp-web-multidevice bisa berbeda tergantung versi
+    // PERBAIKAN: Coba endpoint dengan timeout lebih pendek dan retry
     const endpoints = [
-      '/send/document',     // Endpoint paling umum
-      '/send-document',     // Alternatif 1
-      '/api/send/document', // Alternatif 2
-      '/api/sendDocument',  // Alternatif 3
+      '/send/document',
+      '/api/send/document',
     ]
 
     let lastError: any = null
     let success = false
     let whatsappResponse: any = null
 
-    // Coba endpoint satu per satu
+    // Coba setiap endpoint maksimal 2x dengan timeout 30 detik
     for (const endpoint of endpoints) {
       const url = `${whatsappEndpoint.replace(/\/$/, '')}${endpoint}`
       
       console.log(`🔄 Trying endpoint: ${url}`)
 
-      try {
-        whatsappResponse = await axios.post(url, whatsappForm, {
-          headers: {
-            ...whatsappForm.getHeaders(),
-          },
-          auth: {
-            username: whatsappUsername,
-            password: whatsappPassword,
-          },
-          timeout: 60_000,
-          validateStatus: () => true,
-        })
+      // Retry maksimal 2x per endpoint
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          // Build fresh FormData untuk setiap attempt
+          const whatsappForm = new FormData()
+          whatsappForm.append('phone', formattedPhone)
+          whatsappForm.append('caption', caption)
+          whatsappForm.append('file', fs.createReadStream(filePath), {
+            filename: fileName,
+            contentType: 'application/pdf',
+          })
 
-        console.log('📥 Response status:', whatsappResponse.status)
-        console.log('📥 Response data:', JSON.stringify(whatsappResponse.data).substring(0, 200))
+          console.log(`  Attempt ${attempt}/2...`)
 
-        // Kalau berhasil (status 200-299), stop loop
-        if (whatsappResponse.status >= 200 && whatsappResponse.status < 300) {
-          console.log(`✅ Success with endpoint: ${endpoint}`)
-          success = true
-          break
-        }
+          whatsappResponse = await axios.post(url, whatsappForm, {
+            headers: {
+              ...whatsappForm.getHeaders(),
+            },
+            auth: {
+              username: whatsappUsername,
+              password: whatsappPassword,
+            },
+            timeout: 30000, // PERBAIKAN: Timeout 30 detik (bukan 60)
+            maxContentLength: 10 * 1024 * 1024, // Max 10MB
+            maxBodyLength: 10 * 1024 * 1024,
+            validateStatus: () => true,
+          })
 
-        // Kalau 401/404, coba endpoint berikutnya
-        if (whatsappResponse.status === 401 || whatsappResponse.status === 404) {
-          console.log(`⚠️ Endpoint ${endpoint} returned ${whatsappResponse.status}, trying next...`)
+          console.log('  📥 Response status:', whatsappResponse.status)
+
+          // Kalau berhasil (status 200-299), stop semua loop
+          if (whatsappResponse.status >= 200 && whatsappResponse.status < 300) {
+            console.log(`✅ Success with ${endpoint} (attempt ${attempt})`)
+            success = true
+            break
+          }
+
+          // Kalau 401/404, skip retry dan coba endpoint berikutnya
+          if (whatsappResponse.status === 401 || whatsappResponse.status === 404) {
+            console.log(`  ⚠️ ${whatsappResponse.status} error, trying next endpoint...`)
+            lastError = {
+              endpoint,
+              status: whatsappResponse.status,
+              data: whatsappResponse.data,
+            }
+            break // Skip retry, langsung ke endpoint berikutnya
+          }
+
+          // Kalau error lain dan masih ada attempt, retry
+          if (attempt < 2) {
+            console.log(`  ⚠️ Error ${whatsappResponse.status}, retrying...`)
+            await new Promise(resolve => setTimeout(resolve, 2000)) // Wait 2 detik
+            continue
+          }
+
           lastError = {
             endpoint,
             status: whatsappResponse.status,
             data: whatsappResponse.data,
           }
-          continue
-        }
 
-        // Kalau error lain (500, dll), langsung return error
-        lastError = {
-          endpoint,
-          status: whatsappResponse.status,
-          data: whatsappResponse.data,
-        }
-        break
+        } catch (error: any) {
+          const errorMsg = error.code === 'ECONNABORTED' ? 'Timeout after 30s' : error.message
+          console.error(`  ❌ Error (attempt ${attempt}):`, errorMsg)
+          
+          // Kalau timeout dan masih ada attempt, retry
+          if (attempt < 2 && error.code === 'ECONNABORTED') {
+            console.log('  🔄 Retrying after timeout...')
+            await new Promise(resolve => setTimeout(resolve, 2000))
+            continue
+          }
 
-      } catch (error: any) {
-        console.error(`❌ Error with endpoint ${endpoint}:`, error.message)
-        lastError = {
-          endpoint,
-          error: error.message,
+          lastError = {
+            endpoint,
+            error: errorMsg,
+            code: error.code,
+          }
         }
-        continue
       }
+
+      // Kalau sudah success, stop loop endpoint
+      if (success) break
     }
 
     const tookMs = Date.now() - start
@@ -234,6 +252,21 @@ export async function POST(request: NextRequest) {
     // Kalau semua endpoint gagal
     if (!success) {
       console.error('❌ All endpoints failed. Last error:', lastError)
+      
+      // Kalau timeout, kasih message khusus
+      if (lastError?.error?.includes('Timeout') || lastError?.code === 'ECONNABORTED') {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'WhatsApp API timeout. Server may be overloaded or slow.',
+            details: 'Please check if WhatsApp API server is running and responding.',
+            lastError,
+            tookMs,
+          },
+          { status: 504 }, // Gateway Timeout
+        )
+      }
+
       return NextResponse.json(
         {
           success: false,
@@ -241,7 +274,6 @@ export async function POST(request: NextRequest) {
           status: lastError?.status || 500,
           details: lastError,
           tookMs,
-          triedEndpoints: endpoints,
         },
         { status: 502 },
       )
@@ -254,6 +286,7 @@ export async function POST(request: NextRequest) {
       message: 'PDF confirmation sent successfully',
       bookingId,
       phone: formattedPhone,
+      pdfSizeKB: parseFloat(pdfSizeKB),
       tookMs,
       timestamp: new Date().toISOString(),
       whatsappResponse: whatsappResponse.data,
@@ -263,11 +296,11 @@ export async function POST(request: NextRequest) {
     const message = error instanceof Error ? error.message : 'Internal server error'
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   } finally {
-    // Cleanup temp file no matter what
+    // Cleanup temp file
     if (filePath) {
       try {
         await fsp.unlink(filePath)
-        console.log('🗑️ Temp file deleted:', filePath)
+        console.log('🗑️ Temp file deleted')
       } catch {
         // ignore cleanup errors
       }
@@ -282,15 +315,11 @@ export async function GET() {
       method: 'POST',
       endpoint: '/api/send-file',
       body: {
-        phone: '6289685028129 or 6289685028129@s.whatsapp.net',
+        phone: '628xxx or 628xxx@s.whatsapp.net',
         umrahFormData: 'JSON string of UmrahFormData',
         bookingId: 'string',
         caption: 'string (optional)',
-        is_forwarded: 'boolean (optional)',
-        duration: 'number (optional)',
       },
     },
   })
 }
-
-
