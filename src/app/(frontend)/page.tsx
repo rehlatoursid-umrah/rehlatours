@@ -1,8 +1,8 @@
 // src/app/(frontend)/page.tsx
-// Server Component: fetch paket di server, lalu render UmrahForm (client) sebagai child.
+// Server Component: fetch paket di server, render UmrahForm (client) sebagai child
 
 import { UmrahForm } from '@/components/umrah-form'
-import { getUmrahPackageOptions } from '@/actions/umrahform' // TODO: sesuaikan path sesuai project kamu
+import { getUmrahPackageOptions } from '@/actions/services'
 import { AlertCircle, Package } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -141,4 +141,3 @@ export default async function UmrahFormPage() {
     </div>
   )
 }
-
