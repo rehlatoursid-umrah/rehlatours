@@ -32,12 +32,13 @@ import {
 import { cn } from '@/lib/utils'
 import { umrahFormSchema, type UmrahFormData } from '@/lib/validations'
 import { UmrahPackage } from '@/payload-types'
+import { submitUmrahForm } from '@/actions/umrahform' // 
 
 interface UmrahFormProps {
   packages: UmrahPackage[]
-  onSubmit: (data: UmrahFormData) => Promise<{ success: boolean; data?: any; error?: string }>
   isSubmitting?: boolean
 }
+
 
 const FormSection = ({
   icon: Icon,
@@ -106,7 +107,8 @@ const FormField = ({
   </div>
 )
 
-export function UmrahForm({ packages, onSubmit, isSubmitting = false }: UmrahFormProps) {
+export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
+ {
   const [showIllnessField, setShowIllnessField] = useState(false)
   const [showRegisterCalendar, setShowRegisterCalendar] = useState(false)
   const [showBirthCalendar, setShowBirthCalendar] = useState(false)
@@ -185,7 +187,7 @@ export function UmrahForm({ packages, onSubmit, isSubmitting = false }: UmrahFor
       console.log('Step B: About to call onSubmit prop...')
       console.log('onSubmit function type:', typeof onSubmit)
 
-      const result = await onSubmit(data as UmrahFormData)
+     const result = await submitUmrahForm(data as UmrahFormData)
 
       console.log('Step C: onSubmit returned successfully')
       console.log('Result:', result)
