@@ -4,9 +4,12 @@ import { createElement } from 'react'
 import ConfirmationPDF from '@/components/ConfirmationPDF'
 import { UmrahFormData } from '@/types/form'
 import FormData from 'form-data'
-import fs from 'fs'
 import path from 'path'
 import axios from 'axios'
+import { promises as fsp } from 'fs'
+import fs from 'fs'
+
+export const runtime = 'nodejs' // ensure Node.js runtime on Vercel
 
 // Legacy interface for backward compatibility
 interface LegacyBookingData {
@@ -19,12 +22,12 @@ interface LegacyBookingData {
   paymentMethod: string
 }
 
-// Function to convert legacy booking data to UmrahFormData
+// Convert legacy booking data to UmrahFormData
 function convertLegacyToUmrahData(legacyData: LegacyBookingData): UmrahFormData {
   return {
     name: legacyData.customerName || '',
     register_date: new Date().toISOString().split('T')[0],
-    gender: 'male', // default
+    gender: 'male',
     place_of_birth: '',
     birth_date: '',
     father_name: '',
@@ -58,123 +61,145 @@ function convertLegacyToUmrahData(legacyData: LegacyBookingData): UmrahFormData 
   }
 }
 
+function safeJsonParse<T>(value: string, label: string): { ok: true; data: T } | { ok: false; error: string } {
+  try {
+    return { ok: true, data: JSON.parse(value) as T }
+  } catch {
+    return { ok: false, error: `Invalid ${label} format` }
+  }
+}
+
 export async function POST(request: NextRequest) {
+  const start = Date.now()
+  let filePath: string | null = null
+
   try {
     const formData = await request.formData()
 
-    const phone = formData.get('phone') as string
-    const bookingDataJson = formData.get('bookingData') as string
-    const umrahFormDataJson = formData.get('umrahFormData') as string
+    const phone = (formData.get('phone') as string | null)?.trim() || ''
+    const bookingIdInput = (formData.get('bookingId') as string | null)?.trim()
+    const bookingDataJson = (formData.get('bookingData') as string | null)?.trim()
+    const umrahFormDataJson = (formData.get('umrahFormData') as string | null)?.trim()
+
     const caption =
-      (formData.get('caption') as string) ||
-      'Terima kasih atas pemesanan Anda. Berikut adalah konfirmasi pemesanan Anda.'
-    const is_forwarded = formData.get('is_forwarded') === 'true'
-    const duration = parseInt(formData.get('duration') as string) || 3600
+      ((formData.get('caption') as string | null) ?? '') ||
+      'Terima kasih atas pendaftaran Anda. Berikut adalah konfirmasi pendaftaran Anda.'
+
+    const is_forwarded = (formData.get('is_forwarded') as string | null) === 'true'
+    const durationRaw = (formData.get('duration') as string | null) || ''
+    const duration = Number.isFinite(Number(durationRaw)) ? Number(durationRaw) : 3600
 
     if (!phone) {
-      return NextResponse.json({ error: 'Phone number is required' }, { status: 400 })
+      return NextResponse.json({ success: false, error: 'Phone number is required' }, { status: 400 })
     }
 
-    // Check WhatsApp API configuration
+    // WhatsApp API configuration
     const whatsappEndpoint = process.env.WHATSAPP_API_ENDPOINT
     const whatsappUsername = process.env.WHATSAPP_API_USERNAME
     const whatsappPassword = process.env.WHATSAPP_API_PASSWORD
 
     if (!whatsappEndpoint || !whatsappUsername || !whatsappPassword) {
-      console.error('WhatsApp API configuration missing in environment variables')
-      return NextResponse.json({ error: 'WhatsApp API configuration missing' }, { status: 500 })
+      return NextResponse.json(
+        { success: false, error: 'WhatsApp API configuration missing' },
+        { status: 500 },
+      )
     }
 
     let umrahFormData: UmrahFormData
-    let bookingId: string
+    let bookingId: string = bookingIdInput || `RT-${Date.now()}`
 
-    // Try to parse umrahFormData first (new format), then fall back to legacy bookingData
     if (umrahFormDataJson) {
-      try {
-        const parsedUmrahData = JSON.parse(umrahFormDataJson)
-        umrahFormData = parsedUmrahData
-        bookingId = (formData.get('bookingId') as string) || `RT-${Date.now()}`
-      } catch (error) {
-        console.error('Error parsing umrahFormData:', error)
-        return NextResponse.json({ error: 'Invalid umrahFormData format' }, { status: 400 })
-      }
+      const parsed = safeJsonParse<UmrahFormData>(umrahFormDataJson, 'umrahFormData')
+      if (!parsed.ok) return NextResponse.json({ success: false, error: parsed.error }, { status: 400 })
+      umrahFormData = parsed.data
     } else if (bookingDataJson) {
-      try {
-        const legacyBookingData: LegacyBookingData = JSON.parse(bookingDataJson)
-        umrahFormData = convertLegacyToUmrahData(legacyBookingData)
-        bookingId = legacyBookingData.bookingId || `RT-${Date.now()}`
-      } catch (error) {
-        console.error('Error parsing bookingData:', error)
-        return NextResponse.json({ error: 'Invalid bookingData format' }, { status: 400 })
-      }
+      const parsed = safeJsonParse<LegacyBookingData>(bookingDataJson, 'bookingData')
+      if (!parsed.ok) return NextResponse.json({ success: false, error: parsed.error }, { status: 400 })
+      const legacy = parsed.data
+      umrahFormData = convertLegacyToUmrahData(legacy)
+      bookingId = legacy.bookingId || bookingId
     } else {
       return NextResponse.json(
-        { error: 'Either umrahFormData or bookingData is required' },
+        { success: false, error: 'Either umrahFormData or bookingData is required' },
         { status: 400 },
       )
     }
 
-    // Generate PDF using the safe createElement approach
+    // Generate PDF
     const pdfDocument = createElement(ConfirmationPDF, { formData: umrahFormData, bookingId })
     const pdfBuffer = await renderToBuffer(pdfDocument as any)
 
-    // Create temporary file
-    const tempDir = path.join(process.cwd(), 'temp')
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir, { recursive: true })
-    }
+    // TEMP DIR for Vercel serverless
+    const tempDir = '/tmp'
+    await fsp.mkdir(tempDir, { recursive: true })
 
     const fileName = `confirmation-${bookingId}-${Date.now()}.pdf`
-    const filePath = path.join(tempDir, fileName)
+    filePath = path.join(tempDir, fileName)
 
-    fs.writeFileSync(filePath, pdfBuffer as any)
+    await fsp.writeFile(filePath, pdfBuffer as any)
 
-    // Create form data for WhatsApp API
+    // Build multipart for WhatsApp API
     const whatsappForm = new FormData()
     whatsappForm.append('phone', phone)
     whatsappForm.append('caption', caption)
     whatsappForm.append('file', fs.createReadStream(filePath), fileName)
-    whatsappForm.append('is_forwarded', is_forwarded.toString())
-    whatsappForm.append('duration', duration.toString())
+    whatsappForm.append('is_forwarded', String(is_forwarded))
+    whatsappForm.append('duration', String(duration))
 
     // Send to WhatsApp API
-    const whatsappResponse = await axios.post(
-      `${process.env.WHATSAPP_API_ENDPOINT}/send/file`,
-      whatsappForm,
-      {
-        headers: {
-          ...whatsappForm.getHeaders(),
-        },
-        auth: {
-          username: whatsappUsername,
-          password: whatsappPassword,
-        },
-      },
-    )
+    const url = `${whatsappEndpoint.replace(/\/$/, '')}/send/file`
 
-    // Clean up temporary file
-    fs.unlinkSync(filePath)
+    const whatsappResponse = await axios.post(url, whatsappForm, {
+      headers: {
+        ...whatsappForm.getHeaders(),
+      },
+      auth: {
+        username: whatsappUsername,
+        password: whatsappPassword,
+      },
+      // optional safety to avoid hanging functions
+      timeout: 60_000,
+      // make axios not throw on non-2xx so we can return better error body
+      validateStatus: () => true,
+    })
+
+    const tookMs = Date.now() - start
 
     if (whatsappResponse.status < 200 || whatsappResponse.status >= 300) {
       return NextResponse.json(
-        { error: 'Failed to send WhatsApp message', details: whatsappResponse.data },
-        { status: whatsappResponse.status },
+        {
+          success: false,
+          error: 'Failed to send WhatsApp message',
+          status: whatsappResponse.status,
+          details: whatsappResponse.data,
+          tookMs,
+        },
+        { status: 502 },
       )
     }
-
-    const result = whatsappResponse.data
 
     return NextResponse.json({
       success: true,
       message: 'PDF confirmation sent successfully',
-      bookingId: bookingId,
-      phone: phone,
+      bookingId,
+      phone,
+      tookMs,
       timestamp: new Date().toISOString(),
-      whatsappResponse: result,
+      whatsappResponse: whatsappResponse.data,
     })
-  } catch (error) {
-    console.error('Error sending PDF confirmation:', error)
-    return NextResponse.json({ error: 'Internal server error', details: error }, { status: 500 })
+  } catch (error: any) {
+    // avoid returning raw error object (often not serializable)
+    const message = error instanceof Error ? error.message : 'Internal server error'
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
+  } finally {
+    // Cleanup temp file no matter what
+    if (filePath) {
+      try {
+        await fsp.unlink(filePath)
+      } catch {
+        // ignore cleanup errors
+      }
+    }
   }
 }
 
@@ -186,19 +211,8 @@ export async function GET() {
       endpoint: '/api/send-file',
       body: {
         phone: '6289685028129@s.whatsapp.net',
-        // New format (preferred)
         umrahFormData: 'JSON string of UmrahFormData',
         bookingId: 'string',
-        // Legacy format (backward compatibility)
-        bookingData: {
-          bookingId: 'string',
-          customerName: 'string',
-          email: 'string',
-          whatsappNumber: 'string',
-          phoneNumber: 'string',
-          packageName: 'string',
-          paymentMethod: 'string',
-        },
         caption: 'string (optional)',
         is_forwarded: 'boolean (optional)',
         duration: 'number (optional)',
@@ -206,3 +220,4 @@ export async function GET() {
     },
   })
 }
+
