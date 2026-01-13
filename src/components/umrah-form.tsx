@@ -191,10 +191,16 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
           description: result.data?.message || 'Pendaftaran Anda telah diterima.',
           duration: 3000,
         })
-         setTimeout(() => {
-    window.location.href = `/success?bookingId=${result.data?.booking_id}`
-  }, 2000)
-}
+
+        // Reset form
+        form.reset()
+
+        // Redirect ke halaman sukses - PERBAIKAN: pakai booking_id (underscore), bukan bookingid
+        setTimeout(() => {
+          const bookingId = result.data?.booking_id || 'N/A'
+          window.location.href = `/success?bookingId=${bookingId}`
+        }, 2000)
+      }
 
       console.log('=== FORM SUBMIT HANDLER SUCCESS ===')
     } catch (error) {
@@ -834,3 +840,4 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
     </div>
   )
 }
+
