@@ -10,9 +10,8 @@ import { promises as fsp } from 'fs'
 import fs from 'fs'
 
 export const runtime = 'nodejs'
-export const maxDuration = 60 // Vercel max duration 60 seconds
+export const maxDuration = 60
 
-// Legacy interface for backward compatibility
 interface LegacyBookingData {
   bookingId: string
   customerName: string
@@ -89,7 +88,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Phone number is required' }, { status: 400 })
     }
 
-    // WhatsApp API configuration
     const whatsappEndpoint = process.env.WHATSAPP_API_ENDPOINT
     const whatsappUsername = process.env.WHATSAPP_API_USERNAME
     const whatsappPassword = process.env.WHATSAPP_API_PASSWORD
@@ -121,7 +119,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Generate PDF
     console.log('📄 Generating PDF for booking:', bookingId)
     const pdfDocument = createElement(ConfirmationPDF, { formData: umrahFormData, bookingId })
     const pdfBuffer = await renderToBuffer(pdfDocument as any)
@@ -129,7 +126,6 @@ export async function POST(request: NextRequest) {
     const pdfSizeKB = (pdfBuffer.byteLength / 1024).toFixed(2)
     console.log(`📊 PDF size: ${pdfSizeKB} KB`)
 
-    // TEMP DIR for Vercel serverless
     const tempDir = '/tmp'
     await fsp.mkdir(tempDir, { recursive: true })
 
@@ -139,7 +135,7 @@ export async function POST(request: NextRequest) {
     await fsp.writeFile(filePath, pdfBuffer as any)
     console.log('✅ PDF saved to:', filePath)
 
-    // Format phone number untuk WhatsApp API
+    // Format phone: tambah @s.whatsapp.net
     let formattedPhone = phone
     if (!phone.includes('@')) {
       formattedPhone = `${phone}@s.whatsapp.net`
@@ -147,132 +143,46 @@ export async function POST(request: NextRequest) {
 
     console.log('📱 Phone formatted:', phone, '→', formattedPhone)
 
-    // PERBAIKAN: Coba endpoint dengan timeout lebih pendek dan retry
-    const endpoints = [
-      '/send/document',
-      '/api/send/document',
-    ]
+    // ✅ ENDPOINT YANG BENAR sesuai dokumentasi
+    const url = `${whatsappEndpoint.replace(/\/$/, '')}/send/file`
+    
+    console.log('🔄 Sending to WhatsApp API:', url)
 
-    let lastError: any = null
-    let success = false
-    let whatsappResponse: any = null
+    // Build FormData
+    const whatsappForm = new FormData()
+    whatsappForm.append('phone', formattedPhone)
+    whatsappForm.append('caption', caption)
+    whatsappForm.append('file', fs.createReadStream(filePath), {
+      filename: fileName,
+      contentType: 'application/pdf',
+    })
 
-    // Coba setiap endpoint maksimal 2x dengan timeout 30 detik
-    for (const endpoint of endpoints) {
-      const url = `${whatsappEndpoint.replace(/\/$/, '')}${endpoint}`
-      
-      console.log(`🔄 Trying endpoint: ${url}`)
-
-      // Retry maksimal 2x per endpoint
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        try {
-          // Build fresh FormData untuk setiap attempt
-          const whatsappForm = new FormData()
-          whatsappForm.append('phone', formattedPhone)
-          whatsappForm.append('caption', caption)
-          whatsappForm.append('file', fs.createReadStream(filePath), {
-            filename: fileName,
-            contentType: 'application/pdf',
-          })
-
-          console.log(`  Attempt ${attempt}/2...`)
-
-          whatsappResponse = await axios.post(url, whatsappForm, {
-            headers: {
-              ...whatsappForm.getHeaders(),
-            },
-            auth: {
-              username: whatsappUsername,
-              password: whatsappPassword,
-            },
-            timeout: 30000, // PERBAIKAN: Timeout 30 detik (bukan 60)
-            maxContentLength: 10 * 1024 * 1024, // Max 10MB
-            maxBodyLength: 10 * 1024 * 1024,
-            validateStatus: () => true,
-          })
-
-          console.log('  📥 Response status:', whatsappResponse.status)
-
-          // Kalau berhasil (status 200-299), stop semua loop
-          if (whatsappResponse.status >= 200 && whatsappResponse.status < 300) {
-            console.log(`✅ Success with ${endpoint} (attempt ${attempt})`)
-            success = true
-            break
-          }
-
-          // Kalau 401/404, skip retry dan coba endpoint berikutnya
-          if (whatsappResponse.status === 401 || whatsappResponse.status === 404) {
-            console.log(`  ⚠️ ${whatsappResponse.status} error, trying next endpoint...`)
-            lastError = {
-              endpoint,
-              status: whatsappResponse.status,
-              data: whatsappResponse.data,
-            }
-            break // Skip retry, langsung ke endpoint berikutnya
-          }
-
-          // Kalau error lain dan masih ada attempt, retry
-          if (attempt < 2) {
-            console.log(`  ⚠️ Error ${whatsappResponse.status}, retrying...`)
-            await new Promise(resolve => setTimeout(resolve, 2000)) // Wait 2 detik
-            continue
-          }
-
-          lastError = {
-            endpoint,
-            status: whatsappResponse.status,
-            data: whatsappResponse.data,
-          }
-
-        } catch (error: any) {
-          const errorMsg = error.code === 'ECONNABORTED' ? 'Timeout after 30s' : error.message
-          console.error(`  ❌ Error (attempt ${attempt}):`, errorMsg)
-          
-          // Kalau timeout dan masih ada attempt, retry
-          if (attempt < 2 && error.code === 'ECONNABORTED') {
-            console.log('  🔄 Retrying after timeout...')
-            await new Promise(resolve => setTimeout(resolve, 2000))
-            continue
-          }
-
-          lastError = {
-            endpoint,
-            error: errorMsg,
-            code: error.code,
-          }
-        }
-      }
-
-      // Kalau sudah success, stop loop endpoint
-      if (success) break
-    }
+    const whatsappResponse = await axios.post(url, whatsappForm, {
+      headers: {
+        ...whatsappForm.getHeaders(),
+      },
+      auth: {
+        username: whatsappUsername,
+        password: whatsappPassword,
+      },
+      timeout: 45000, // 45 detik
+      maxContentLength: 50 * 1024 * 1024,
+      maxBodyLength: 50 * 1024 * 1024,
+      validateStatus: () => true,
+    })
 
     const tookMs = Date.now() - start
 
-    // Kalau semua endpoint gagal
-    if (!success) {
-      console.error('❌ All endpoints failed. Last error:', lastError)
-      
-      // Kalau timeout, kasih message khusus
-      if (lastError?.error?.includes('Timeout') || lastError?.code === 'ECONNABORTED') {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'WhatsApp API timeout. Server may be overloaded or slow.',
-            details: 'Please check if WhatsApp API server is running and responding.',
-            lastError,
-            tookMs,
-          },
-          { status: 504 }, // Gateway Timeout
-        )
-      }
+    console.log('📥 Response status:', whatsappResponse.status)
+    console.log('📥 Response data:', JSON.stringify(whatsappResponse.data))
 
+    if (whatsappResponse.status < 200 || whatsappResponse.status >= 300) {
       return NextResponse.json(
         {
           success: false,
           error: 'Failed to send WhatsApp message',
-          status: lastError?.status || 500,
-          details: lastError,
+          status: whatsappResponse.status,
+          details: whatsappResponse.data,
           tookMs,
         },
         { status: 502 },
@@ -296,14 +206,11 @@ export async function POST(request: NextRequest) {
     const message = error instanceof Error ? error.message : 'Internal server error'
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   } finally {
-    // Cleanup temp file
     if (filePath) {
       try {
         await fsp.unlink(filePath)
         console.log('🗑️ Temp file deleted')
-      } catch {
-        // ignore cleanup errors
-      }
+      } catch {}
     }
   }
 }
