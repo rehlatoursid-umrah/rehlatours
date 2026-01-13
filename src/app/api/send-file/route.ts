@@ -126,6 +126,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate PDF
+    console.log('📄 Generating PDF for booking:', bookingId)
     const pdfDocument = createElement(ConfirmationPDF, { formData: umrahFormData, bookingId })
     const pdfBuffer = await renderToBuffer(pdfDocument as any)
 
@@ -137,59 +138,128 @@ export async function POST(request: NextRequest) {
     filePath = path.join(tempDir, fileName)
 
     await fsp.writeFile(filePath, pdfBuffer as any)
+    console.log('✅ PDF saved to:', filePath)
+
+    // Format phone number untuk WhatsApp API
+    // go-whatsapp-web-multidevice biasanya perlu format: 628xxx@s.whatsapp.net
+    let formattedPhone = phone
+    if (!phone.includes('@')) {
+      formattedPhone = `${phone}@s.whatsapp.net`
+    }
+
+    console.log('📱 Phone formatted:', phone, '→', formattedPhone)
 
     // Build multipart for WhatsApp API
     const whatsappForm = new FormData()
-whatsappForm.append('phone', phone) // Format: 628xxx tanpa @s.whatsapp.net
-whatsappForm.append('caption', caption)
-whatsappForm.append('file', fs.createReadStream(filePath), {
-  filename: fileName,
-  contentType: 'application/pdf',
-})
-
-    // Send to WhatsApp API
-    const url = `${whatsappEndpoint.replace(/\/$/, '')}/send/document`
-
-    const whatsappResponse = await axios.post(url, whatsappForm, {
-      headers: {
-        ...whatsappForm.getHeaders(),
-      },
-      auth: {
-        username: whatsappUsername,
-        password: whatsappPassword,
-      },
-      // optional safety to avoid hanging functions
-      timeout: 60_000,
-      // make axios not throw on non-2xx so we can return better error body
-      validateStatus: () => true,
+    whatsappForm.append('phone', formattedPhone) // PERBAIKAN: tambah @s.whatsapp.net
+    whatsappForm.append('caption', caption)
+    whatsappForm.append('file', fs.createReadStream(filePath), {
+      filename: fileName,
+      contentType: 'application/pdf',
     })
+
+    // PERBAIKAN: Coba beberapa endpoint alternatif
+    // Endpoint go-whatsapp-web-multidevice bisa berbeda tergantung versi
+    const endpoints = [
+      '/send/document',     // Endpoint paling umum
+      '/send-document',     // Alternatif 1
+      '/api/send/document', // Alternatif 2
+      '/api/sendDocument',  // Alternatif 3
+    ]
+
+    let lastError: any = null
+    let success = false
+    let whatsappResponse: any = null
+
+    // Coba endpoint satu per satu
+    for (const endpoint of endpoints) {
+      const url = `${whatsappEndpoint.replace(/\/$/, '')}${endpoint}`
+      
+      console.log(`🔄 Trying endpoint: ${url}`)
+
+      try {
+        whatsappResponse = await axios.post(url, whatsappForm, {
+          headers: {
+            ...whatsappForm.getHeaders(),
+          },
+          auth: {
+            username: whatsappUsername,
+            password: whatsappPassword,
+          },
+          timeout: 60_000,
+          validateStatus: () => true,
+        })
+
+        console.log('📥 Response status:', whatsappResponse.status)
+        console.log('📥 Response data:', JSON.stringify(whatsappResponse.data).substring(0, 200))
+
+        // Kalau berhasil (status 200-299), stop loop
+        if (whatsappResponse.status >= 200 && whatsappResponse.status < 300) {
+          console.log(`✅ Success with endpoint: ${endpoint}`)
+          success = true
+          break
+        }
+
+        // Kalau 401/404, coba endpoint berikutnya
+        if (whatsappResponse.status === 401 || whatsappResponse.status === 404) {
+          console.log(`⚠️ Endpoint ${endpoint} returned ${whatsappResponse.status}, trying next...`)
+          lastError = {
+            endpoint,
+            status: whatsappResponse.status,
+            data: whatsappResponse.data,
+          }
+          continue
+        }
+
+        // Kalau error lain (500, dll), langsung return error
+        lastError = {
+          endpoint,
+          status: whatsappResponse.status,
+          data: whatsappResponse.data,
+        }
+        break
+
+      } catch (error: any) {
+        console.error(`❌ Error with endpoint ${endpoint}:`, error.message)
+        lastError = {
+          endpoint,
+          error: error.message,
+        }
+        continue
+      }
+    }
 
     const tookMs = Date.now() - start
 
-    if (whatsappResponse.status < 200 || whatsappResponse.status >= 300) {
+    // Kalau semua endpoint gagal
+    if (!success) {
+      console.error('❌ All endpoints failed. Last error:', lastError)
       return NextResponse.json(
         {
           success: false,
           error: 'Failed to send WhatsApp message',
-          status: whatsappResponse.status,
-          details: whatsappResponse.data,
+          status: lastError?.status || 500,
+          details: lastError,
           tookMs,
+          triedEndpoints: endpoints,
         },
         { status: 502 },
       )
     }
 
+    console.log('✅ WhatsApp message sent successfully!')
+
     return NextResponse.json({
       success: true,
       message: 'PDF confirmation sent successfully',
       bookingId,
-      phone,
+      phone: formattedPhone,
       tookMs,
       timestamp: new Date().toISOString(),
       whatsappResponse: whatsappResponse.data,
     })
   } catch (error: any) {
-    // avoid returning raw error object (often not serializable)
+    console.error('❌ Fatal error:', error)
     const message = error instanceof Error ? error.message : 'Internal server error'
     return NextResponse.json({ success: false, error: message }, { status: 500 })
   } finally {
@@ -197,6 +267,7 @@ whatsappForm.append('file', fs.createReadStream(filePath), {
     if (filePath) {
       try {
         await fsp.unlink(filePath)
+        console.log('🗑️ Temp file deleted:', filePath)
       } catch {
         // ignore cleanup errors
       }
@@ -211,7 +282,7 @@ export async function GET() {
       method: 'POST',
       endpoint: '/api/send-file',
       body: {
-        phone: '6289685028129@s.whatsapp.net',
+        phone: '6289685028129 or 6289685028129@s.whatsapp.net',
         umrahFormData: 'JSON string of UmrahFormData',
         bookingId: 'string',
         caption: 'string (optional)',
@@ -221,4 +292,5 @@ export async function GET() {
     },
   })
 }
+
 
