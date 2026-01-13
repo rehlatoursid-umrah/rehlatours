@@ -33,20 +33,18 @@ import { cn } from '@/lib/utils'
 import { umrahFormSchema, type UmrahFormData } from '@/lib/validations'
 import { UmrahPackage } from '@/payload-types'
 import { submitUmrahForm } from '@/actions/services'
- // 
 
 interface UmrahFormProps {
   packages: UmrahPackage[]
   isSubmitting?: boolean
 }
 
-
 const FormSection = ({
   icon: Icon,
   title,
   description,
   children,
-  className = '',
+  className,
 }: {
   icon: any
   title: string
@@ -54,10 +52,8 @@ const FormSection = ({
   children: React.ReactNode
   className?: string
 }) => (
-  <div className={`group relative form-section ${className}`}>
-    {/* Background decoration */}
+  <div className={cn('group relative form-section', className)}>
     <div className="lg:absolute lg:inset-0 lg:bg-gradient-to-r lg:from-rose-50/30 lg:via-white lg:to-pink-50/30 lg:rounded-2xl lg:blur-xl lg:opacity-50 group-hover:lg:opacity-70 transition-all duration-500"></div>
-
     <div className="relative">
       <div className="flex items-center mb-8">
         <div
@@ -96,7 +92,6 @@ const FormField = ({
     </Label>
     <div className="relative">
       {children}
-      {/* Subtle field decoration */}
       <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-rose-100/0 via-pink-100/20 to-rose-100/0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
     </div>
     {error && (
@@ -108,8 +103,7 @@ const FormField = ({
   </div>
 )
 
-export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
- {
+export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
   const [showIllnessField, setShowIllnessField] = useState(false)
   const [showRegisterCalendar, setShowRegisterCalendar] = useState(false)
   const [showBirthCalendar, setShowBirthCalendar] = useState(false)
@@ -158,7 +152,6 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
     }
   }, [watchSpecificDisease, setValue])
 
-  // Close all calendars when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Element
@@ -171,32 +164,31 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
     }
 
     document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
   }, [])
 
   const onSubmitHandler = handleSubmit(async (data: any) => {
     console.log('=== FORM SUBMIT HANDLER START ===')
     console.log('Form data received:', data)
-    console.log('Form data type:', typeof data)
-    console.log('Form data keys:', data ? Object.keys(data) : 'null/undefined')
 
     try {
-      console.log('Step A: Clearing errors...')
-      // Clear any previous errors before submission
       clearErrors()
+      console.log('Calling submitUmrahForm...')
 
-      console.log('Step B: About to call onSubmit prop...')
-      console.log('onSubmit function type:', typeof onSubmit)
+      const result = await submitUmrahForm(data as UmrahFormData)
 
-     const result = await submitUmrahForm(data as UmrahFormData)
+      console.log('Submit result:', result)
 
-      console.log('Step C: onSubmit returned successfully')
-      console.log('Result:', result)
-
-      // Tampilkan error toast jika submission gagal
       if (!result.success) {
         toast.error('Submission Gagal', {
           description: result.error || 'Terjadi kesalahan yang tidak terduga',
+          duration: 5000,
+        })
+      } else {
+        toast.success('Pendaftaran Berhasil!', {
+          description: result.data?.message || 'Pendaftaran Anda telah diterima.',
           duration: 5000,
         })
       }
@@ -204,48 +196,25 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
       console.log('=== FORM SUBMIT HANDLER SUCCESS ===')
     } catch (error) {
       console.log('=== FORM SUBMIT HANDLER ERROR ===')
-      console.error('Form submission error type:', typeof error)
-      console.error('Form submission error constructor:', error?.constructor?.name)
-      console.error(
-        'Form submission error message:',
-        error instanceof Error ? error.message : 'Unknown error',
-      )
-      console.error('Full form submission error:', error)
+      console.error('Form submission error:', error)
 
-      if (error instanceof Error && error.stack) {
-        console.error('Form submission error stack:')
-        console.error(error.stack)
-      }
-
-      // Check for stack overflow in form handler
-      if (error instanceof Error && error.message.includes('Maximum call stack')) {
-        console.log('DETECTED: Stack overflow in form handler!')
-        toast.error('Error Sistem', {
-          description: 'Terjadi stack overflow. Silakan refresh halaman dan coba lagi.',
-          duration: 5000,
-        })
-      } else {
-        toast.error('Error Tak Terduga', {
-          description: error instanceof Error ? error.message : 'Terjadi kesalahan tak terduga',
-          duration: 5000,
-        })
-      }
+      toast.error('Error Tak Terduga', {
+        description: error instanceof Error ? error.message : 'Terjadi kesalahan tak terduga',
+        duration: 5000,
+      })
     }
   })
 
-  // Function to manually refresh form validation state
   const refreshValidation = async () => {
     await trigger()
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-rose-50 via-white to-pink-50 py-8 px-2 sm:px-4 md:px-6 relative overflow-hidden">
-      {/* Background decorations */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-rose-100/20 via-transparent to-transparent"></div>
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,_var(--tw-gradient-stops))] from-pink-100/20 via-transparent to-transparent"></div>
 
       <div className="max-w-6xl mx-auto relative z-10 lg:max-w-4xl">
-        {/* Form Container */}
         <div className="bg-white/95 backdrop-blur-sm rounded-3xl border border-gray-100/50 hover:shadow-3xl transition-all duration-500 relative lg:bg-white/95 lg:backdrop-blur-sm lg:rounded-3xl lg:shadow-2xl lg:border lg:border-gray-100/50 lg:hover:shadow-3xl">
           <form onSubmit={onSubmitHandler} className="p-4 sm:p-6 md:p-8 lg:p-12 space-y-12">
             {/* Personal Information */}
@@ -264,11 +233,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
                   />
                 </FormField>
 
-                <FormField
-                  label="NIK (Nomor Induk Kependudukan)"
-                  error={errors.nik_number?.message}
-                  required
-                >
+                <FormField label="NIK (Nomor Induk Kependudukan)" error={errors.nik_number?.message} required>
                   <Input
                     {...register('nik_number')}
                     placeholder="16 digit NIK"
@@ -296,16 +261,13 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
                       )}
                       onClick={() => {
                         setShowBirthCalendar(!showBirthCalendar)
-                        // Close other calendars
                         setShowRegisterCalendar(false)
                         setShowIssueCalendar(false)
                         setShowExpiryCalendar(false)
                       }}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {watchBirthDate
-                        ? format(watchBirthDate, 'dd/MM/yyyy')
-                        : 'Pilih tanggal lahir'}
+                      {watchBirthDate ? format(watchBirthDate, 'dd/MM/yyyy') : 'Pilih tanggal lahir'}
                     </Button>
                     {showBirthCalendar && (
                       <div className="calendar-popup absolute top-full left-0 mt-1 z-[9999] bg-white border-2 border-rose-200 rounded-xl shadow-2xl p-4 min-w-[300px] transform translate-x-0">
@@ -358,16 +320,8 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
                   </Select>
                 </FormField>
 
-                <FormField
-                  label="Status Pernikahan"
-                  error={errors.mariage_status?.message}
-                  required
-                >
-                  <Select
-                    onValueChange={(value) =>
-                      setValue('mariage_status', value as 'single' | 'married' | 'divorced')
-                    }
-                  >
+                <FormField label="Status Pernikahan" error={errors.mariage_status?.message} required>
+                  <Select onValueChange={(value) => setValue('mariage_status', value as 'single' | 'married' | 'divorced')}>
                     <SelectTrigger className="h-12 border-2 border-gray-200 focus:border-rose-400 focus:ring-2 focus:ring-rose-200 transition-all duration-200 hover:border-gray-300">
                       <SelectValue placeholder="Pilih status pernikahan" />
                     </SelectTrigger>
@@ -454,11 +408,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
                   />
                 </FormField>
 
-                <FormField
-                  label="Kontak Darurat"
-                  error={errors.emergency_contact_name?.message}
-                  required
-                >
+                <FormField label="Kontak Darurat" error={errors.emergency_contact_name?.message} required>
                   <Input
                     {...register('emergency_contact_name')}
                     placeholder="Nama kontak darurat"
@@ -481,11 +431,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
                   </Select>
                 </FormField>
 
-                <FormField
-                  label="Nomor Telepon Kontak Darurat"
-                  error={errors.emergency_contact_phone?.message}
-                  required
-                >
+                <FormField label="Nomor Telepon Kontak Darurat" error={errors.emergency_contact_phone?.message} required>
                   <Input
                     {...register('emergency_contact_phone')}
                     placeholder="Masukkan nomor telepon kontak darurat"
@@ -511,11 +457,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
                   />
                 </FormField>
 
-                <FormField
-                  label="Tanggal Penerbitan"
-                  error={errors.date_of_issue?.message}
-                  required
-                >
+                <FormField label="Tanggal Penerbitan" error={errors.date_of_issue?.message} required>
                   <div className="relative calendar-container">
                     <Button
                       type="button"
@@ -526,7 +468,6 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
                       )}
                       onClick={() => {
                         setShowIssueCalendar(!showIssueCalendar)
-                        // Close other calendars
                         setShowBirthCalendar(false)
                         setShowRegisterCalendar(false)
                         setShowExpiryCalendar(false)
@@ -536,7 +477,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
                       {watchDateOfIssue ? format(watchDateOfIssue, 'dd/MM/yyyy') : 'Pilih tanggal'}
                     </Button>
                     {showIssueCalendar && (
-                      <div className="calendar-popup absolute top-full left-0 mt-1 z-auto bg-white border-2 border-rose-200 rounded-xl shadow-2xl p-4  transform translate-x-0 md:mt-1 md:min-w-[300px] min-w-full mb-16">
+                      <div className="calendar-popup absolute top-full left-0 mt-1 z-auto bg-white border-2 border-rose-200 rounded-xl shadow-2xl p-4 transform translate-x-0 md:mt-1 md:min-w-[300px] min-w-full mb-16">
                         <Calendar
                           mode="single"
                           selected={watchDateOfIssue}
@@ -568,7 +509,6 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
                     )}
                     onClick={() => {
                       setShowExpiryCalendar(!showExpiryCalendar)
-                      // Close other calendars
                       setShowBirthCalendar(false)
                       setShowRegisterCalendar(false)
                       setShowIssueCalendar(false)
@@ -589,7 +529,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
                               setShowExpiryCalendar(false)
                             }
                           }}
-                          disabled={(date) => date <= new Date()}
+                          disabled={(date) => date < new Date()}
                           initialFocus
                           className="rounded-lg"
                           captionLayout="dropdown"
@@ -601,11 +541,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
                   </div>
                 </FormField>
 
-                <FormField
-                  label="Tempat Penerbitan"
-                  error={errors.place_of_issue?.message}
-                  required
-                >
+                <FormField label="Tempat Penerbitan" error={errors.place_of_issue?.message} required>
                   <Input
                     {...register('place_of_issue')}
                     placeholder="Contoh: Jakarta"
@@ -629,7 +565,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
                       <SelectValue placeholder="Pilih paket umrah" />
                     </SelectTrigger>
                     <SelectContent>
-                      {packages.map((pkg) => (
+                      {packages.map((pkg: any) => (
                         <SelectItem key={pkg.id} value={pkg.id}>
                           {pkg.name} - Rp {pkg.price?.toLocaleString('id-ID')}
                         </SelectItem>
@@ -638,11 +574,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
                   </Select>
                 </FormField>
 
-                <FormField
-                  label="Metode Pembayaran"
-                  error={errors.payment_method?.message}
-                  required
-                >
+                <FormField label="Metode Pembayaran" error={errors.payment_method?.message} required>
                   <Select onValueChange={(value) => setValue('payment_method', value as any)}>
                     <SelectTrigger className="h-12 border-2 border-gray-200 focus:border-rose-400 focus:ring-2 focus:ring-rose-200 transition-all duration-200 hover:border-gray-300">
                       <SelectValue placeholder="Pilih metode pembayaran" />
@@ -654,11 +586,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
                   </Select>
                 </FormField>
 
-                <FormField
-                  label="Tanggal Pendaftaran"
-                  error={errors.register_date?.message}
-                  required
-                >
+                <FormField label="Tanggal Pendaftaran" error={errors.register_date?.message} required>
                   <div className="relative calendar-container">
                     <Button
                       type="button"
@@ -669,16 +597,13 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
                       )}
                       onClick={() => {
                         setShowRegisterCalendar(!showRegisterCalendar)
-                        // Close other calendars
                         setShowBirthCalendar(false)
                         setShowIssueCalendar(false)
                         setShowExpiryCalendar(false)
                       }}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {watchRegisterDate
-                        ? format(watchRegisterDate, 'dd/MM/yyyy')
-                        : 'Pilih tanggal'}
+                      {watchRegisterDate ? format(watchRegisterDate, 'dd/MM/yyyy') : 'Pilih tanggal'}
                     </Button>
                     {showRegisterCalendar && (
                       <div className="calendar-popup absolute top-full left-0 mt-1 z-[9999] bg-white border-2 border-rose-200 rounded-xl shadow-2xl p-4 min-w-[300px] transform translate-x-0">
@@ -781,10 +706,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
                     id="has_performed_umrah"
                     className="w-6 h-6 border-2 border-rose-400 focus:ring-rose-400 focus:border-rose-500 transition-all duration-200 mr-2 flex-shrink-0"
                   />
-                  <Label
-                    htmlFor="has_performed_umrah"
-                    className="text-sm font-medium text-gray-700"
-                  >
+                  <Label htmlFor="has_performed_umrah" className="text-sm font-medium text-gray-700">
                     Pernah melaksanakan Umrah sebelumnya
                   </Label>
                 </div>
@@ -814,7 +736,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
                 <div className="bg-gradient-to-br from-rose-50 to-pink-50 p-4 sm:p-6 rounded-xl border border-rose-200/50 shadow-sm overflow-hidden">
                   <h4 className="font-bold text-gray-900 mb-3 text-base sm:text-lg flex items-center break-words">
                     <div className="w-2 h-2 bg-rose-500 rounded-full mr-3 flex-shrink-0"></div>
-                    Persyaratan Umum:
+                    Persyaratan Umum
                   </h4>
                   <ul className="text-sm text-gray-700 space-y-2">
                     <li className="flex items-start break-words">
@@ -849,26 +771,20 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
                       className="w-6 h-6 border-2 border-rose-400 focus:ring-rose-400 focus:border-rose-500 transition-all duration-200 mr-3 mt-1 flex-shrink-0"
                     />
                     <div className="flex flex-col w-full min-w-0">
-                      <Label
-                        htmlFor="terms_of_service"
-                        className="text-base text-gray-800 font-medium leading-snug break-words"
-                      >
+                      <Label htmlFor="terms_of_service" className="text-base text-gray-800 font-medium leading-snug break-words">
                         Saya telah membaca dan menyetujui{' '}
-                        <span
-                          className="font-bold underline decoration-rose-500 decoration-2"
-                          style={{ color: '#3a0519' }}
-                        >
+                        <span className="font-bold underline decoration-rose-500 decoration-2" style={{ color: '#3a0519' }}>
                           syarat dan ketentuan
                         </span>{' '}
                         yang berlaku untuk perjalanan umrah ini.
                       </Label>
                       <p className="text-sm text-gray-700 mt-2 leading-normal break-words">
-                        Saya memahami bahwa semua informasi yang saya berikan adalah benar dan dapat
-                        dipertanggungjawabkan.
+                        Saya memahami bahwa semua informasi yang saya berikan adalah benar dan dapat dipertanggungjawabkan.
                       </p>
                     </div>
                   </div>
                 </div>
+
                 {errors.terms_of_service && (
                   <p className="text-sm text-red-500 mt-2 flex items-center">
                     <AlertTriangle className="w-4 h-4 mr-1" />
@@ -876,41 +792,38 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps)
                   </p>
                 )}
               </div>
-
-              <Button
-                type="submit"
-                className="w-full text-white font-bold py-5 text-lg transition-all duration-300 transform hover:scale-[1.02] shadow-xl hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none relative overflow-hidden group mt-5"
-                style={{ background: 'linear-gradient(135deg, #3a0519 0%, #5d1f35 100%)' }}
-                disabled={isSubmitting || formIsSubmitting}
-                onClick={refreshValidation}
-              >
-                {/* Shimmer effect */}
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent transform -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
-
-                {isSubmitting || formIsSubmitting ? (
-                  <div className="flex items-center justify-center relative z-10">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
-                    Mengirim...
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center relative z-10">
-                    <CreditCard className="w-6 h-6 mr-3" />
-                    Kirim Pendaftaran
-                  </div>
-                )}
-              </Button>
             </FormSection>
-          </form>
-        </div>
 
-        {/* Footer Note */}
-        <div className="mt-12 text-center">
-          <div className="inline-flex items-center px-6 py-4 bg-white/80 backdrop-blur-sm rounded-full shadow-lg border border-gray-200/50">
-            <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <p className="text-sm text-gray-700 font-medium">
-                © 2024 Rehla Tours. Semua data akan dijaga kerahasiaannya.
-              </p>
+            <Button
+              type="submit"
+              className="w-full text-white font-bold py-5 text-lg transition-all duration-300 transform hover:scale-1.02 shadow-xl hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none relative overflow-hidden group mt-5"
+              style={{ background: 'linear-gradient(135deg, #3a0519 0%, #5d1f35 100%)' }}
+              disabled={isSubmitting || formIsSubmitting}
+              onClick={refreshValidation}
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent transform -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
+              {isSubmitting || formIsSubmitting ? (
+                <div className="flex items-center justify-center relative z-10">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
+                  Mengirim...
+                </div>
+              ) : (
+                <div className="flex items-center justify-center relative z-10">
+                  <CreditCard className="w-6 h-6 mr-3" />
+                  Kirim Pendaftaran
+                </div>
+              )}
+            </Button>
+          </form>
+
+          <div className="mt-12 text-center">
+            <div className="inline-flex items-center px-6 py-4 bg-white/80 backdrop-blur-sm rounded-full shadow-lg border border-gray-200/50">
+              <div className="flex items-center space-x-2">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <p className="text-sm text-gray-700 font-medium">
+                  © 2024 Rehla Tours. Semua data akan dijaga kerahasiaannya.
+                </p>
+              </div>
             </div>
           </div>
         </div>
