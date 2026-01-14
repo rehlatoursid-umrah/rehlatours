@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
     await fsp.writeFile(filePath, pdfBuffer as any)
     console.log('✅ PDF saved to:', filePath)
 
-    // Format phone: tambah @s.whatsapp.net kalau belum ada
+    // Format phone: tambah @s.whatsapp.net
     let formattedPhone = phone
     if (!phone.includes('@')) {
       formattedPhone = `${phone}@s.whatsapp.net`
@@ -141,10 +141,11 @@ export async function POST(request: NextRequest) {
 
     console.log('📱 Phone formatted:', phone, '→', formattedPhone)
 
-    // Build FormData untuk WhatsApp API
+    // ✅ Build FormData PERSIS seperti SendFile.js
     const whatsappForm = new FormData()
-    whatsappForm.append('phone', formattedPhone)
     whatsappForm.append('caption', caption)
+    whatsappForm.append('phone', formattedPhone)
+    whatsappForm.append('is_forwarded', 'false')  // ✅ Sesuai dengan code asli
     whatsappForm.append('file', fs.createReadStream(filePath), {
       filename: fileName,
       contentType: 'application/pdf',
@@ -152,13 +153,18 @@ export async function POST(request: NextRequest) {
 
     const url = `${whatsappEndpoint.replace(/\/$/, '')}/send/file`
     console.log('🔄 Sending to WhatsApp API:', url)
+    console.log('📤 Request data:', {
+      phone: formattedPhone,
+      caption: caption.substring(0, 50) + '...',
+      fileName: fileName,
+    })
 
-    // ✅ PERBAIKAN: Tanpa authentication
+    // ✅ TANPA AUTH - persis seperti window.http.post di dashboard
     const whatsappResponse = await axios.post(url, whatsappForm, {
       headers: {
         ...whatsappForm.getHeaders(),
       },
-      // HAPUS auth - API tidak pakai authentication
+      // TIDAK ADA AUTH!
       timeout: 45000,
       maxContentLength: 50 * 1024 * 1024,
       maxBodyLength: 50 * 1024 * 1024,
@@ -171,6 +177,11 @@ export async function POST(request: NextRequest) {
     console.log('📥 Response data:', JSON.stringify(whatsappResponse.data))
 
     if (whatsappResponse.status < 200 || whatsappResponse.status >= 300) {
+      console.error('❌ WhatsApp API error:', {
+        status: whatsappResponse.status,
+        data: whatsappResponse.data,
+      })
+      
       return NextResponse.json(
         {
           success: false,
@@ -198,7 +209,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error('❌ Fatal error:', error)
     const message = error instanceof Error ? error.message : 'Internal server error'
-    return NextResponse.json({ success: false, error: message }, { status: 500 })
+    return NextResponse.json({ success: false, error: message, stack: error.stack }, { status: 500 })
   } finally {
     if (filePath) {
       try {
@@ -212,11 +223,12 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     message: 'Send PDF Confirmation API',
+    version: '2.0',
     usage: {
       method: 'POST',
       endpoint: '/api/send-file',
       body: {
-        phone: '628xxx or 628xxx@s.whatsapp.net',
+        phone: '628xxx (will be formatted to 628xxx@s.whatsapp.net)',
         umrahFormData: 'JSON string of UmrahFormData',
         bookingId: 'string',
         caption: 'string (optional)',
@@ -224,3 +236,4 @@ export async function GET() {
     },
   })
 }
+
