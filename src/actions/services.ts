@@ -2,7 +2,6 @@
 
 import { getPayload } from 'payload'
 import config from '@/payload.config'
-import { validateUmrahFormSimple } from '@/lib/validations-simple'
 
 interface SubmitResponse {
   success: boolean
@@ -17,14 +16,15 @@ interface SubmitResponse {
   errors?: string[]
 }
 
-function safeExtract(value: any): any {
-  if (value === null || value === undefined) return null
-  if (typeof value === 'string') return value.toString()
-  if (typeof value === 'number') return Number(value)
-  if (typeof value === 'boolean') return Boolean(value)
-  if (value instanceof Date) return new Date(value.getTime())
-  if (typeof value === 'object' && value.toString) return value.toString()
-  return String(value)
+function safeString(v: any): string {
+  if (v === null || v === undefined) return ''
+  return String(v).trim()
+}
+
+function safeNumber(v: any): number | null {
+  if (v === null || v === undefined || v === '') return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
 }
 
 // Helper format phone number (WA)
@@ -37,7 +37,6 @@ function formatPhoneForWhatsApp(phone: string): string {
 }
 
 function resolveBaseUrl(): string {
-  // untuk WA API route (/api/send-file) di project hematumrah
   let baseUrl =
     process.env.NEXT_PUBLIC_BASE_URL ||
     process.env.VERCEL_URL ||
@@ -60,7 +59,6 @@ async function sendPdfToWhatsapp(params: {
   if (!formattedPhone) throw new Error('Invalid phone number')
 
   const apiUrl = `${baseUrl}/api/send-file`
-  console.log(`📤 Sending PDF to ${formattedPhone} via ${apiUrl}`)
 
   const fd = new FormData()
   fd.append('phone', formattedPhone)
@@ -71,77 +69,74 @@ async function sendPdfToWhatsapp(params: {
   const res = await fetch(apiUrl, { method: 'POST', body: fd })
   const text = await res.text()
 
-  if (!res.ok) {
-    console.error(`❌ WA API Error (${res.status}): ${text}`)
-    return { success: false, error: text }
-  }
-
-  console.log(`✅ WA Success to ${formattedPhone}`)
+  if (!res.ok) return { success: false, error: text }
   return JSON.parse(text)
 }
 
 /**
- * Mapping data untuk Umrah Hemat (tabungan/cicilan custom).
- * NOTE: field cicilan baru:
- * - installment_amount
- * - installment_frequency
- * - installment_notes
+ * Validator minimal khusus Umrah Hemat (sesuai collection Hematumrahdaftar.ts)
+ */
+function validateHematForm(formData: any): { success: boolean; errors?: string[] } {
+  const errors: string[] = []
+
+  const name = safeString(formData?.name)
+  const email = safeString(formData?.email)
+  const phone = safeString(formData?.phone_number)
+  const wa = safeString(formData?.whatsapp_number)
+  const gender = safeString(formData?.gender)
+  const pob = safeString(formData?.place_of_birth)
+  const birthDate = formData?.birth_date
+  const address = safeString(formData?.address)
+  const city = safeString(formData?.city)
+  const province = safeString(formData?.province)
+  const pkg = safeString(formData?.umrah_package)
+  const installmentAmount = safeNumber(formData?.installment_amount)
+  const installmentFrequency = safeString(formData?.installment_frequency)
+
+  if (!name) errors.push('Nama wajib diisi')
+  if (!email) errors.push('Email wajib diisi')
+  if (!phone) errors.push('Nomor telepon wajib diisi')
+  if (!wa) errors.push('Nomor WhatsApp wajib diisi')
+  if (!gender) errors.push('Gender wajib diisi')
+  if (!pob) errors.push('Tempat lahir wajib diisi')
+  if (!birthDate) errors.push('Tanggal lahir wajib diisi')
+  if (!address) errors.push('Alamat wajib diisi')
+  if (!city) errors.push('Kota wajib diisi')
+  if (!province) errors.push('Provinsi wajib diisi')
+  if (!pkg) errors.push('Paket umrah wajib dipilih')
+  if (installmentAmount === null || installmentAmount <= 0)
+    errors.push('Rencana setoran wajib diisi dan harus > 0')
+  if (!installmentFrequency) errors.push('Frekuensi setoran wajib dipilih')
+
+  return errors.length ? { success: false, errors } : { success: true }
+}
+
+/**
+ * Clean data sesuai Collection Hematumrahdaftar.ts
+ * - umrah_package harus berupa ID (relationship)
  */
 function buildCleanDataHemat(formData: any) {
   return {
-    booking_id: '',
-
-    // data umum (sama seperti sebelumnya)
-    name: safeExtract(formData.name) || '',
-    register_date: formData.register_date
-      ? new Date(formData.register_date).toISOString()
-      : new Date().toISOString(),
-    gender: safeExtract(formData.gender) || 'male',
-    place_of_birth: safeExtract(formData.place_of_birth) || '',
+    // booking_id di-generate via hook collection
+    name: safeString(formData.name),
+    email: safeString(formData.email),
+    phone_number: safeString(formData.phone_number),
+    whatsapp_number: safeString(formData.whatsapp_number),
+    gender: safeString(formData.gender),
+    place_of_birth: safeString(formData.place_of_birth),
     birth_date: formData.birth_date ? new Date(formData.birth_date).toISOString() : null,
-    father_name: safeExtract(formData.father_name) || '',
-    mother_name: safeExtract(formData.mother_name) || '',
-    address: safeExtract(formData.address) || '',
-    city: safeExtract(formData.city) || '',
-    province: safeExtract(formData.province) || '',
-    postal_code: safeExtract(formData.postal_code) || '',
-    occupation: safeExtract(formData.occupation) || '',
+    address: safeString(formData.address),
+    city: safeString(formData.city),
+    province: safeString(formData.province),
 
-    specific_disease: Boolean(formData.specific_disease) || false,
-    illness: safeExtract(formData.illness) || null,
-    special_needs: Boolean(formData.special_needs) || false,
-    wheelchair: Boolean(formData.wheelchair) || false,
+    // relationship -> ID paket
+    umrah_package: safeString(formData.umrah_package),
 
-    nik_number: safeExtract(formData.nik_number) || '',
-    passport_number: safeExtract(formData.passport_number) || '',
-    date_of_issue: formData.date_of_issue ? new Date(formData.date_of_issue).toISOString() : null,
-    expiry_date: formData.expiry_date ? new Date(formData.expiry_date).toISOString() : null,
-    place_of_issue: safeExtract(formData.place_of_issue) || '',
-
-    phone_number: safeExtract(formData.phone_number) || '',
-    whatsapp_number: safeExtract(formData.whatsapp_number) || '',
-    email: safeExtract(formData.email) || '',
-
-    has_performed_umrah: Boolean(formData.has_performed_umrah) || false,
-    has_performed_hajj: Boolean(formData.has_performed_hajj) || false,
-
-    emergency_contact_name: safeExtract(formData.emergency_contact_name) || '',
-    relationship: safeExtract(formData.relationship) || 'parents',
-    emergency_contact_phone: safeExtract(formData.emergency_contact_phone) || '',
-    mariage_status: safeExtract(formData.mariage_status) || 'single',
-
-    umrah_package: safeExtract(formData.umrah_package) || '',
-
-    // pembayaran khusus hemat (tabungan)
     payment_type: 'tabungan_custom',
-    installment_amount:
-      formData.installment_amount !== undefined && formData.installment_amount !== null
-        ? Number(formData.installment_amount)
-        : null,
-    installment_frequency: safeExtract(formData.installment_frequency) || 'flexible',
-    installment_notes: safeExtract(formData.installment_notes) || '',
+    installment_amount: safeNumber(formData.installment_amount),
+    installment_frequency: safeString(formData.installment_frequency) || 'flexible',
+    installment_notes: safeString(formData.installment_notes),
 
-    terms_of_service: Boolean(formData.terms_of_service) || false,
     submission_date: new Date().toISOString(),
     status: 'pending_review',
   }
@@ -166,7 +161,6 @@ export async function getUmrahPackageOptions() {
 
     return { success: true, data: options }
   } catch (error: any) {
-    console.error('Error fetching package options:', error)
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Terjadi kesalahan saat mengambil opsi paket',
@@ -176,44 +170,30 @@ export async function getUmrahPackageOptions() {
 }
 
 export async function submitHematUmrahForm(formData: any): Promise<SubmitResponse> {
-  console.log('=== SUBMIT HEMAT FORM START ===')
-
   try {
     if (!formData) return { success: false, error: 'Form data is missing' }
 
-    // VALIDASI SEMENTARA:
-    // Kalau validateUmrahFormSimple belum mengenal field cicilan baru,
-    // kamu bisa:
-    // - update validatornya, ATAU
-    // - comment validasi ini sementara untuk memastikan flow end-to-end jalan.
-    const simpleValidationResult = validateUmrahFormSimple(formData)
-    if (!simpleValidationResult.success) {
+    const validation = validateHematForm(formData)
+    if (!validation.success) {
       return {
         success: false,
-        error: `Simple validation failed: ${simpleValidationResult.error}`,
-        errors: simpleValidationResult.errors,
+        error: 'Validasi gagal',
+        errors: validation.errors,
       }
     }
 
     const cleanData = buildCleanDataHemat(formData)
     const payload = await getPayload({ config })
 
-    // SIMPAN KE COLLECTION BARU (HEMAT)
     const result = await payload.create({
-      collection: 'hemat-umrah-daftar', // <-- pastikan slug collection kamu sama
+      collection: 'hemat-umrah-daftar', // slug sudah sesuai dengan file Hematumrahdaftar.ts
       data: cleanData,
     })
 
     const bookingId = (result as any).booking_id || `HU-${Date.now()}`
-    console.log('✅ Hemat data saved. Booking ID:', bookingId)
-
-    // WA API base URL (route /api/send-file ada di project hematumrah)
     const baseUrl = resolveBaseUrl()
-    console.log('🌐 Base URL for WA API:', baseUrl)
 
-    const customerPhone = formatPhoneForWhatsApp(
-      cleanData.whatsapp_number || cleanData.phone_number || '',
-    )
+    const customerPhone = formatPhoneForWhatsApp(cleanData.whatsapp_number || cleanData.phone_number)
     const adminPhone = formatPhoneForWhatsApp(process.env.ADMIN_WA_PHONE || '')
 
     const captionCustomer = `🕌 *Konfirmasi Pendaftaran Umrah Hemat (Tabungan)*
@@ -237,17 +217,16 @@ Jazakallahu khairan,
 ID: ${bookingId}
 Nama: ${cleanData.name}
 WA: ${customerPhone}
-Paket: ${cleanData.umrah_package}
+Paket(ID): ${cleanData.umrah_package}
 Setoran: ${cleanData.installment_amount} (${cleanData.installment_frequency})`
 
-    // kirim WA background (non-blocking)
     Promise.allSettled([
       customerPhone
         ? sendPdfToWhatsapp({
             baseUrl,
             phone: customerPhone,
             bookingId,
-            umrahFormData: cleanData,
+            umrahFormData: { ...cleanData, booking_id: bookingId },
             caption: captionCustomer,
           })
         : Promise.resolve(),
@@ -257,16 +236,11 @@ Setoran: ${cleanData.installment_amount} (${cleanData.installment_frequency})`
             baseUrl,
             phone: adminPhone,
             bookingId,
-            umrahFormData: cleanData,
+            umrahFormData: { ...cleanData, booking_id: bookingId },
             caption: captionAdmin,
           })
         : Promise.resolve(),
-    ]).then((results) => {
-      console.log('📝 Background WhatsApp tasks completed')
-      results.forEach((res, idx) => {
-        if (res.status === 'rejected') console.error(`❌ WA Task ${idx} failed:`, res.reason)
-      })
-    })
+    ])
 
     return {
       success: true,
@@ -277,11 +251,9 @@ Setoran: ${cleanData.installment_amount} (${cleanData.installment_frequency})`
       },
     }
   } catch (error) {
-    console.error('=== SUBMIT HEMAT FORM ERROR ===', error)
-    return {
-      success: false,
-      error: 'Terjadi kesalahan sistem. Silakan coba lagi.',
-    }
+    console.error('submitHematUmrahForm error:', error)
+    return { success: false, error: 'Terjadi kesalahan sistem. Silakan coba lagi.' }
   }
 }
+
 
