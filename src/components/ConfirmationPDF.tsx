@@ -251,10 +251,7 @@ export default function ConfirmationPDF({ formData, bookingId }: ConfirmationPDF
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        
-        {/* --- HEADER YANG SUDAH DIUPDATE --- */}
         <View style={styles.header}>
-          {/* Logo di kiri */}
           <Image 
             style={styles.logo} 
             src={/rehla.png}
