@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
+
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Calendar } from '@/components/ui/calendar'
+
 import {
   Calendar as CalendarIcon,
   User,
@@ -29,10 +30,10 @@ import {
   Package,
   CreditCard,
 } from 'lucide-react'
+
 import { cn } from '@/lib/utils'
-import { umrahFormSchema, type UmrahFormData } from '@/lib/validations'
-import { UmrahPackage } from '@/payload-types'
-import { submitUmrahForm } from '@/actions/services'
+import type { UmrahPackage } from '@/payload-types'
+import { submitHematUmrahForm } from '@/actions/services'
 
 interface UmrahFormProps {
   packages: UmrahPackage[]
@@ -67,6 +68,7 @@ const FormSection = ({
           <p className="text-gray-600 text-sm leading-relaxed">{description}</p>
         </div>
       </div>
+
       <div className="lg:bg-white/80 lg:backdrop-blur-sm lg:rounded-2xl lg:p-6 lg:border lg:border-gray-200/50 lg:shadow-lg lg:hover:shadow-xl transition-all duration-300">
         {children}
       </div>
@@ -103,6 +105,47 @@ const FormField = ({
   </div>
 )
 
+type HematFormValues = {
+  // minimal sesuai submitHematUmrahForm + collection
+  name?: string
+  email?: string
+  phone_number?: string
+  whatsapp_number?: string
+  gender?: 'male' | 'female'
+  place_of_birth?: string
+  birth_date?: Date
+  address?: string
+  city?: string
+  province?: string
+  umrah_package?: string // IMPORTANT: paket ID
+  installment_amount?: number
+  installment_frequency?: 'daily' | 'weekly' | 'monthly' | 'flexible'
+  installment_notes?: string
+  terms_of_service?: boolean
+
+  // field ekstra (masih ada di UI lama) – aman, server action akan ambil yang perlu saja
+  nik_number?: string
+  father_name?: string
+  mother_name?: string
+  mariage_status?: string
+  occupation?: string
+  postal_code?: string
+  emergency_contact_name?: string
+  relationship?: string
+  emergency_contact_phone?: string
+  passport_number?: string
+  date_of_issue?: Date
+  expiry_date?: Date
+  place_of_issue?: string
+  specific_disease?: boolean
+  illness?: string
+  special_needs?: boolean
+  wheelchair?: boolean
+  has_performed_umrah?: boolean
+  has_performed_hajj?: boolean
+  register_date?: Date
+}
+
 export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
   const [showIllnessField, setShowIllnessField] = useState(false)
   const [showRegisterCalendar, setShowRegisterCalendar] = useState(false)
@@ -110,8 +153,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
   const [showIssueCalendar, setShowIssueCalendar] = useState(false)
   const [showExpiryCalendar, setShowExpiryCalendar] = useState(false)
 
-  const form = useForm({
-    resolver: zodResolver(umrahFormSchema),
+  const form = useForm<HematFormValues>({
     mode: 'onChange',
     reValidateMode: 'onChange',
     defaultValues: {
@@ -122,7 +164,6 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
       has_performed_hajj: false,
       terms_of_service: false,
 
-      // default baru (tabungan umrah)
       installment_amount: undefined,
       installment_frequency: undefined,
       installment_notes: '',
@@ -152,9 +193,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
 
   useEffect(() => {
     setShowIllnessField(!!watchSpecificDisease)
-    if (!watchSpecificDisease) {
-      setValue('illness', undefined)
-    }
+    if (!watchSpecificDisease) setValue('illness', undefined)
   }, [watchSpecificDisease, setValue])
 
   useEffect(() => {
@@ -169,57 +208,45 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
     }
 
     document.addEventListener('mousedown', handleClickOutside)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const onSubmitHandler = handleSubmit(async (data: any) => {
-    console.log('=== FORM SUBMIT HANDLER START ===')
-    console.log('Form data received:', data)
-
+  const onSubmitHandler = handleSubmit(async (data) => {
     try {
       clearErrors()
-      console.log('Calling submitUmrahForm...')
 
-      const result = await submitUmrahForm(data as UmrahFormData)
-
-      console.log('Submit result:', result)
+      const result = await submitHematUmrahForm(data)
 
       if (!result.success) {
         toast.error('Submission Gagal', {
-          description: result.error || 'Terjadi kesalahan yang tidak terduga',
-          duration: 5000,
+          description: (result.errors && result.errors.join(', ')) || result.error || 'Terjadi kesalahan',
+          duration: 6000,
         })
-      } else {
-        toast.success('Pendaftaran Berhasil!', {
-          description: result.data?.message || 'Pendaftaran Anda telah diterima.',
-          duration: 3000,
-        })
-
-        form.reset()
-
-        setTimeout(() => {
-          const id = result.data?.id || ''
-          const bookingId = result.data?.booking_id || 'N/A'
-          const name = data.name || 'Guest'
-          const message = result.data?.message || 'Pendaftaran Anda telah diterima.'
-
-          const encodedMessage = encodeURIComponent(message)
-          const encodedName = encodeURIComponent(name)
-
-          window.location.href = `/success?id=${id}&booking_id=${bookingId}&name=${encodedName}&message=${encodedMessage}`
-        }, 2000)
+        return
       }
 
-      console.log('=== FORM SUBMIT HANDLER SUCCESS ===')
-    } catch (error) {
-      console.log('=== FORM SUBMIT HANDLER ERROR ===')
-      console.error('Form submission error:', error)
+      toast.success('Pendaftaran Berhasil!', {
+        description: result.data?.message || 'Pendaftaran Anda telah diterima.',
+        duration: 3000,
+      })
 
+      form.reset()
+
+      setTimeout(() => {
+        const id = result.data?.id || ''
+        const bookingId = result.data?.booking_id || 'N/A'
+        const name = data.name || 'Guest'
+        const message = result.data?.message || 'Pendaftaran Anda telah diterima.'
+
+        const encodedMessage = encodeURIComponent(message)
+        const encodedName = encodeURIComponent(name)
+
+        window.location.href = `/success?id=${id}&booking_id=${bookingId}&name=${encodedName}&message=${encodedMessage}`
+      }, 1200)
+    } catch (error) {
       toast.error('Error Tak Terduga', {
         description: error instanceof Error ? error.message : 'Terjadi kesalahan tak terduga',
-        duration: 5000,
+        duration: 6000,
       })
     }
   })
@@ -252,7 +279,11 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
                   />
                 </FormField>
 
-                <FormField label="NIK (Nomor Induk Kependudukan)" error={(errors as any).nik_number?.message} required>
+                <FormField
+                  label="NIK (Nomor Induk Kependudukan)"
+                  error={(errors as any).nik_number?.message}
+                  required
+                >
                   <Input
                     {...register('nik_number')}
                     placeholder="16 digit NIK"
@@ -329,7 +360,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
                 </FormField>
 
                 <FormField label="Jenis Kelamin" error={(errors as any).gender?.message} required>
-                  <Select onValueChange={(value) => setValue('gender', value as 'male' | 'female')}>
+                  <Select onValueChange={(value) => setValue('gender', value as any, { shouldValidate: true })}>
                     <SelectTrigger className="h-12 border-2 border-gray-200 focus:border-rose-400 focus:ring-2 focus:ring-rose-200 transition-all duration-200 hover:border-gray-300">
                       <SelectValue placeholder="Pilih jenis kelamin" />
                     </SelectTrigger>
@@ -341,11 +372,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
                 </FormField>
 
                 <FormField label="Status Pernikahan" error={(errors as any).mariage_status?.message} required>
-                  <Select
-                    onValueChange={(value) =>
-                      setValue('mariage_status', value as 'single' | 'married' | 'divorced')
-                    }
-                  >
+                  <Select onValueChange={(value) => setValue('mariage_status', value as any)}>
                     <SelectTrigger className="h-12 border-2 border-gray-200 focus:border-rose-400 focus:ring-2 focus:ring-rose-200 transition-all duration-200 hover:border-gray-300">
                       <SelectValue placeholder="Pilih status pernikahan" />
                     </SelectTrigger>
@@ -404,7 +431,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
                   <Input
                     {...register('city')}
                     placeholder="Masukkan kota"
-                    className="h-12 border-2 border-gray-200 focus:border-rose-400 focus:ring-2 focus:ring-rose-200 transition-all duration-200 hover:border-gray-300"
+                    className="h-12 border-2 border-gray-200 focus:border-rose-400 focus:ring--2 focus:ring-rose-200 transition-all duration-200 hover:border-gray-300"
                   />
                 </FormField>
 
@@ -581,7 +608,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
               </div>
             </FormSection>
 
-            {/* Package Selection */}
+            {/* Package Selection + Tabungan */}
             <FormSection
               icon={Package}
               title="Pilihan Paket"
@@ -590,13 +617,13 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
             >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <FormField label="Paket Umrah" error={(errors as any).umrah_package?.message} required>
-                  <Select onValueChange={(value) => setValue('umrah_package', value)}>
+                  <Select onValueChange={(value) => setValue('umrah_package', value, { shouldValidate: true })}>
                     <SelectTrigger className="h-12 border-2 border-gray-200 focus:border-rose-400 focus:ring-2 focus:ring-rose-200 transition-all duration-200 hover:border-gray-300">
                       <SelectValue placeholder="Pilih paket umrah" />
                     </SelectTrigger>
                     <SelectContent>
                       {packages.map((pkg: any) => (
-                        <SelectItem key={pkg.id} value={pkg.id}>
+                        <SelectItem key={pkg.id} value={String(pkg.id)}>
                           {pkg.name} - Rp {pkg.price?.toLocaleString('id-ID')}
                         </SelectItem>
                       ))}
@@ -604,7 +631,6 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
                   </Select>
                 </FormField>
 
-                {/* Metode pembayaran baru */}
                 <FormField label="Metode Pembayaran" required>
                   <div className="h-12 flex items-center px-4 rounded-lg border-2 border-gray-200 bg-gray-50 text-gray-800 font-medium">
                     Tabungan Umrah (Custom)
@@ -621,7 +647,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
                     inputMode="numeric"
                     placeholder="Contoh: 500000"
                     className="h-12 border-2 border-gray-200 focus:border-rose-400 focus:ring-2 focus:ring-rose-200 transition-all duration-200 hover:border-gray-300"
-                    {...register('installment_amount' as any, { valueAsNumber: true })}
+                    {...register('installment_amount', { valueAsNumber: true })}
                   />
                 </FormField>
 
@@ -632,7 +658,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
                 >
                   <Select
                     onValueChange={(value) =>
-                      setValue('installment_frequency' as any, value as any, { shouldValidate: true })
+                      setValue('installment_frequency', value as any, { shouldValidate: true })
                     }
                   >
                     <SelectTrigger className="h-12 border-2 border-gray-200 focus:border-rose-400 focus:ring-2 focus:ring-rose-200 transition-all duration-200 hover:border-gray-300">
@@ -647,14 +673,11 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
                   </Select>
                 </FormField>
 
-                <FormField
-                  label="Catatan Rencana Tabungan"
-                  error={(errors as any).installment_notes?.message}
-                >
+                <FormField label="Catatan Rencana Tabungan" error={(errors as any).installment_notes?.message}>
                   <Textarea
                     placeholder="Contoh: Setor setiap tanggal 25 setelah gajian"
                     className="min-h-[100px] resize-none border-2 border-gray-200 focus:border-rose-400 focus:ring-2 focus:ring-rose-200 transition-all duration-200 hover:border-gray-300"
-                    {...register('installment_notes' as any)}
+                    {...register('installment_notes')}
                   />
                 </FormField>
 
@@ -703,7 +726,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
               </div>
             </FormSection>
 
-            {/* Health Information */}
+            {/* Health */}
             <FormSection
               icon={Heart}
               title="Informasi Kesehatan"
@@ -713,7 +736,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
               <div className="space-y-6">
                 <div className="flex items-center space-x-3">
                   <Checkbox
-                    checked={watchSpecificDisease}
+                    checked={!!watchSpecificDisease}
                     id="specific_disease"
                     className="w-6 h-6 border-2 border-rose-400 focus:ring-rose-400 focus:border-rose-500 transition-all duration-200 mr-2 flex-shrink-0"
                     onCheckedChange={(checked) => {
@@ -739,7 +762,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="flex items-center space-x-3">
                     <Checkbox
-                      checked={watchSpecialNeeds}
+                      checked={!!watchSpecialNeeds}
                       onCheckedChange={(checked) => setValue('special_needs', !!checked)}
                       id="special_needs"
                       className="w-6 h-6 border-2 border-rose-400 focus:ring-rose-400 focus:border-rose-500 transition-all duration-200 mr-2 flex-shrink-0"
@@ -751,7 +774,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
 
                   <div className="flex items-center space-x-3">
                     <Checkbox
-                      checked={watchWheelchair}
+                      checked={!!watchWheelchair}
                       onCheckedChange={(checked) => setValue('wheelchair', !!checked)}
                       id="wheelchair"
                       className="w-6 h-6 border-2 border-rose-400 focus:ring-rose-400 focus:border-rose-500 transition-all duration-200 mr-2 flex-shrink-0"
@@ -774,7 +797,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex items-center space-x-3">
                   <Checkbox
-                    checked={watchHasPerformedUmrah}
+                    checked={!!watchHasPerformedUmrah}
                     onCheckedChange={(checked) => setValue('has_performed_umrah', !!checked)}
                     id="has_performed_umrah"
                     className="w-6 h-6 border-2 border-rose-400 focus:ring-rose-400 focus:border-rose-500 transition-all duration-200 mr-2 flex-shrink-0"
@@ -786,7 +809,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
 
                 <div className="flex items-center space-x-3">
                   <Checkbox
-                    checked={watchHasPerformedHajj}
+                    checked={!!watchHasPerformedHajj}
                     onCheckedChange={(checked) => setValue('has_performed_hajj', !!checked)}
                     id="has_performed_hajj"
                     className="w-6 h-6 border-2 border-rose-400 focus:ring-rose-400 focus:border-rose-500 transition-all duration-200 mr-2 flex-shrink-0"
@@ -798,7 +821,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
               </div>
             </FormSection>
 
-            {/* Terms and Conditions */}
+            {/* Terms */}
             <FormSection
               icon={FileText}
               title="Syarat dan Ketentuan"
@@ -838,7 +861,7 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-3 rounded-lg bg-white/80 border border-rose-200/50 shadow-sm">
                   <div className="flex items-start w-full">
                     <Checkbox
-                      checked={watchTermsOfService}
+                      checked={!!watchTermsOfService}
                       onCheckedChange={(checked) => setValue('terms_of_service', !!checked)}
                       id="terms_of_service"
                       className="w-6 h-6 border-2 border-rose-400 focus:ring-rose-400 focus:border-rose-500 transition-all duration-200 mr-3 mt-1 flex-shrink-0"
@@ -896,7 +919,9 @@ export function UmrahForm({ packages, isSubmitting = false }: UmrahFormProps) {
             <div className="inline-flex items-center px-6 py-4 bg-white/80 backdrop-blur-sm rounded-full shadow-lg border border-gray-200/50">
               <div className="flex items-center space-x-2">
                 <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <p className="text-sm text-gray-700 font-medium">© 2024 Rehla Tours. Semua data akan dijaga kerahasiaannya.</p>
+                <p className="text-sm text-gray-700 font-medium">
+                  © 2024 Rehla Tours. Semua data akan dijaga kerahasiaannya.
+                </p>
               </div>
             </div>
           </div>
