@@ -36,7 +36,6 @@ const styles = StyleSheet.create({
     paddingBottom: 28,
     fontSize: 10,
   },
-  
   header: {
     backgroundColor: '#3A0519',
     paddingVertical: 15,    
@@ -70,8 +69,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Helvetica',
     textAlign: 'left',      
   },
-  // --- BATAS PERUBAHAN HEADER ---
-  
   content: {
     paddingTop: 8,
   },
@@ -171,7 +168,7 @@ interface ConfirmationPDFProps {
   bookingId: string
 }
 
-// Helper functions (tetap sama)
+// Helper functions
 const safeGet = (obj: any, path: string, defaultValue: any = '-'): any => {
   if (!obj || typeof obj !== 'object') return defaultValue
   return obj[path] !== undefined && obj[path] !== null && obj[path] !== '' ? obj[path] : defaultValue
@@ -239,21 +236,18 @@ export default function ConfirmationPDF({ formData, bookingId }: ConfirmationPDF
   const safeFormData = formData || {}
   const safeBookingId = bookingId || `RT-${Date.now()}`
   
-  // Pastikan URL domain sesuai environment (Production/Local)
-  // Atau gunakan path relatif jika di local, tapi untuk PDF generator biasanya butuh full URL atau base64
-  // Di sini saya asumsikan logo ada di public folder dan bisa diakses via window.location.origin
-  // Jika error di server-side, ganti 'window.location.origin' dengan process.env.NEXT_PUBLIC_BASE_URL
   const logoUrl = typeof window !== 'undefined' 
-    ? `${window.location.origin}/logo.png` 
-    : '/logo.png'; 
+    ? `${window.location.origin}/rehla.png` 
+    : '/rehla.png'; 
 
   return (
     <Document>
       <Page size="A4" style={styles.page}>
         <View style={styles.header}>
+         
           <Image 
             style={styles.logo} 
-            src={/rehla.png}
+            src={`https://raw.githubusercontent.com/rehlatoursid-umrah/rehlatours/refs/heads/main/public/rehla.png`}
           />
           
           <View style={styles.headerTextContainer}>
@@ -265,8 +259,6 @@ export default function ConfirmationPDF({ formData, bookingId }: ConfirmationPDF
 
         <View style={styles.content}>
           <Text style={styles.bookingId}>ID Pemesanan: {safeBookingId}</Text>
-
-          {/* Sisa konten ke bawah TETAP SAMA seperti kode asli ... */}
           
           <View style={styles.card}>
             <View style={styles.cardHeader}>
@@ -471,3 +463,4 @@ export default function ConfirmationPDF({ formData, bookingId }: ConfirmationPDF
     </Document>
   )
 }
+
