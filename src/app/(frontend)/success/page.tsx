@@ -245,17 +245,23 @@ function SuccessPageContent() {
           <div
             className={`transform transition-all duration-1000 delay-500 ${animationStep >= 1 ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'}`}
           >
-            <h1
-              className="text-5xl md:text-6xl font-bold mb-4"
-              style={{
-                background: 'linear-gradient(135deg, #3a0519 0%, #5d1f35 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-              }}
-            >
-              Alhamdulillah! 🤲
+            {/* --- FIX ICON START --- */}
+            <h1 className="text-5xl md:text-6xl font-bold mb-4 flex items-center justify-center gap-3">
+              <span
+                style={{
+                  background: 'linear-gradient(135deg, #3a0519 0%, #5d1f35 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
+                }}
+              >
+                Alhamdulillah!
+              </span>
+              {/* Emoji dipisah supaya tidak kena style gradient text */}
+              <span className="text-5xl md:text-6xl text-yellow-500 drop-shadow-sm">🤲</span>
             </h1>
+            {/* --- FIX ICON END --- */}
+
             <p className="text-2xl text-gray-600 mb-4 font-medium">
               Pendaftaran Umroh Anda Berhasil
             </p>
@@ -657,3 +663,4 @@ export default function SuccessPage() {
     </Suspense>
   )
 }
+
