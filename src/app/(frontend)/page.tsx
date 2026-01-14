@@ -1,12 +1,12 @@
 // src/app/(frontend)/page.tsx
-// Server Component: fetch paket di server, render UmrahForm (client) sebagai child
+// Server Component: fetch paket di server, render UmrahHematForm (client) sebagai child
 
-import { UmrahForm } from '@/components/umrah-form'
+import { UmrahForm as UmrahHematForm } from '@/components/ui/umrahhemat-form'
 import { getUmrahPackageOptions } from '@/actions/services'
 import { AlertCircle, Package } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-export default async function UmrahFormPage() {
+export default async function HematUmrahFormPage() {
   let packages: any[] = []
   let error: string | null = null
 
@@ -19,7 +19,7 @@ export default async function UmrahFormPage() {
       error = result?.error || 'Gagal mengambil daftar paket'
       packages = []
     }
-  } catch (e) {
+  } catch {
     error = 'Terjadi kesalahan saat mengambil daftar paket'
     packages = []
   }
@@ -87,12 +87,11 @@ export default async function UmrahFormPage() {
               backgroundClip: 'text',
             }}
           >
-            Pendaftaran Umroh
+            Pendaftaran Umroh Hemat
           </h1>
 
           <p className="text-lg text-gray-600 max-w-2xl mx-auto leading-relaxed">
-            Daftarkan diri Anda untuk perjalanan spiritual yang tak terlupakan dengan paket umroh
-            terbaik kami.
+            Daftarkan diri Anda untuk program tabungan umroh (cicilan custom) sesuai kemampuan.
           </p>
         </div>
 
@@ -109,13 +108,11 @@ export default async function UmrahFormPage() {
                 <div className="w-16 h-16 bg-gradient-to-br from-yellow-100 to-orange-100 rounded-full flex items-center justify-center mx-auto mb-6">
                   <AlertCircle className="w-8 h-8 text-yellow-600" />
                 </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-3">
-                  Tidak Ada Paket Tersedia
-                </h3>
+                <h3 className="text-xl font-semibold text-gray-900 mb-3">Tidak Ada Paket Tersedia</h3>
                 <p className="text-gray-600 mb-6 leading-relaxed">
-                  Saat ini tidak ada paket umroh yang tersedia. Silakan hubungi admin untuk
-                  informasi lebih lanjut atau coba lagi nanti.
+                  Saat ini tidak ada paket umroh yang tersedia. Silakan hubungi admin atau coba lagi nanti.
                 </p>
+
                 <div className="flex flex-col sm:flex-row gap-3">
                   <Button
                     onClick={() => location.reload()}
@@ -135,7 +132,7 @@ export default async function UmrahFormPage() {
             </div>
           </div>
         ) : (
-          <UmrahForm packages={packages as any} />
+          <UmrahHematForm packages={packages as any} />
         )}
       </div>
     </div>
