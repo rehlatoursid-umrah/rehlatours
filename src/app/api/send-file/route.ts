@@ -1,16 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { createElement } from 'react'
-import ConfirmationPDF from '@/components/ConfirmationPDF'
-import { UmrahFormData } from '@/types/form'
 import FormData from 'form-data'
 import path from 'path'
 import axios from 'axios'
 import { promises as fsp } from 'fs'
 import fs from 'fs'
 
+import ConfirmationPDF from '@/components/ConfirmationPDF'
+
 export const runtime = 'nodejs'
 export const maxDuration = 60
+
+/**
+ * Bentuk data yang dikirim dari services.ts (hemat) itu: umrahFormData (JSON string)
+ * Kita buat type longgar supaya kompatibel dengan form lama & baru.
+ */
+type AnyFormData = Record<string, any>
 
 interface LegacyBookingData {
   bookingId: string
@@ -22,49 +28,64 @@ interface LegacyBookingData {
   paymentMethod: string
 }
 
-function convertLegacyToUmrahData(legacyData: LegacyBookingData): UmrahFormData {
-  return {
-    name: legacyData.customerName || '',
-    register_date: new Date().toISOString().split('T')[0],
-    gender: 'male',
-    place_of_birth: '',
-    birth_date: '',
-    father_name: '',
-    mother_name: '',
-    address: '',
-    city: '',
-    province: '',
-    postal_code: '',
-    occupation: '',
-    specific_disease: false,
-    illness: '',
-    special_needs: false,
-    wheelchair: false,
-    nik_number: '',
-    passport_number: '',
-    date_of_issue: '',
-    expiry_date: '',
-    place_of_issue: '',
-    phone_number: legacyData.phoneNumber || '',
-    whatsapp_number: legacyData.whatsappNumber || '',
-    email: legacyData.email || '',
-    has_performed_umrah: false,
-    has_performed_hajj: false,
-    emergency_contact_name: '',
-    relationship: 'parents',
-    emergency_contact_phone: '',
-    mariage_status: 'single',
-    umrah_package: legacyData.packageName || '',
-    payment_method: legacyData.paymentMethod === 'Lunas' ? 'lunas' : '60_percent',
-    terms_of_service: true,
-  }
-}
-
-function safeJsonParse<T>(value: string, label: string): { ok: true; data: T } | { ok: false; error: string } {
+function safeJsonParse<T>(
+  value: string,
+  label: string,
+): { ok: true; data: T } | { ok: false; error: string } {
   try {
     return { ok: true, data: JSON.parse(value) as T }
   } catch {
     return { ok: false, error: `Invalid ${label} format` }
+  }
+}
+
+function formatPhoneForWhatsAppJid(phone: string): string {
+  let formattedPhone = (phone || '').replace(/\D/g, '')
+  if (formattedPhone.startsWith('0')) formattedPhone = '62' + formattedPhone.slice(1)
+  if (formattedPhone && !formattedPhone.startsWith('62')) formattedPhone = '62' + formattedPhone
+  if (formattedPhone && !formattedPhone.includes('@')) formattedPhone += '@s.whatsapp.net'
+  return formattedPhone
+}
+
+/**
+ * Normalisasi supaya ConfirmationPDF minimal tidak error walau field hemat lebih sedikit.
+ * (Komponen PDF kamu tetap yang lama, jadi ini antisipasi null/undefined.)
+ */
+function normalizeForPdf(input: AnyFormData): AnyFormData {
+  const data = input || {}
+  return {
+    ...data,
+
+    // pastikan string fields minimal ada
+    name: data.name ?? data.customerName ?? '',
+    email: data.email ?? '',
+    whatsapp_number: data.whatsapp_number ?? data.whatsappNumber ?? '',
+    phone_number: data.phone_number ?? data.phoneNumber ?? '',
+
+    // paket: di hemat biasanya ID, di legacy biasanya nama
+    umrah_package: data.umrah_package ?? data.packageName ?? '',
+
+    // hemat fields (biarkan ada kalau PDF mau tampilkan)
+    payment_type: data.payment_type ?? 'tabungan_custom',
+    installment_amount: data.installment_amount ?? null,
+    installment_frequency: data.installment_frequency ?? 'flexible',
+    installment_notes: data.installment_notes ?? '',
+  }
+}
+
+/**
+ * Fallback lama: legacy bookingData -> bentuk object generic
+ * (dulu kamu convert ke UmrahFormData, tapi untuk hemat kita bikin longgar saja)
+ */
+function convertLegacyToGeneric(legacyData: LegacyBookingData): AnyFormData {
+  return {
+    name: legacyData.customerName || '',
+    email: legacyData.email || '',
+    whatsapp_number: legacyData.whatsappNumber || '',
+    phone_number: legacyData.phoneNumber || '',
+    umrah_package: legacyData.packageName || '',
+    payment_method: legacyData.paymentMethod || '',
+    terms_of_service: true,
   }
 }
 
@@ -73,19 +94,25 @@ export async function POST(request: NextRequest) {
   let filePath: string | null = null
 
   try {
-    // 1. Parse Request
+    // 1) Parse Request FormData
     const formData = await request.formData()
     const phone = (formData.get('phone') as string | null)?.trim() || ''
     const bookingIdInput = (formData.get('bookingId') as string | null)?.trim()
-    const bookingDataJson = (formData.get('bookingData') as string | null)?.trim()
+
+    // IMPORTANT: services.ts hemat mengirim "umrahFormData"
     const umrahFormDataJson = (formData.get('umrahFormData') as string | null)?.trim()
-    const caption = ((formData.get('caption') as string | null) ?? '') || 'Konfirmasi Pendaftaran Umrah'
+
+    // fallback lama (kalau ada request legacy)
+    const bookingDataJson = (formData.get('bookingData') as string | null)?.trim()
+
+    const caption =
+      ((formData.get('caption') as string | null) ?? '') || 'Konfirmasi Pendaftaran Umrah Hemat'
 
     if (!phone) {
       return NextResponse.json({ success: false, error: 'Phone number is required' }, { status: 400 })
     }
 
-    // 2. Get WhatsApp Config (WAJIB ADA USERNAME & PASSWORD)
+    // 2) WhatsApp Config
     const whatsappEndpoint = process.env.WHATSAPP_API_ENDPOINT
     const whatsappUsername = process.env.WHATSAPP_API_USERNAME
     const whatsappPassword = process.env.WHATSAPP_API_PASSWORD
@@ -99,45 +126,48 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Server configuration error' }, { status: 500 })
     }
 
-    // 3. Parse Data
-    let umrahFormData: UmrahFormData
-    let bookingId: string = bookingIdInput || `RT-${Date.now()}`
+    // 3) Parse Data -> generic object
+    let parsedData: AnyFormData
+    let bookingId: string = bookingIdInput || `HU-${Date.now()}`
 
     if (umrahFormDataJson) {
-      const parsed = safeJsonParse<UmrahFormData>(umrahFormDataJson, 'umrahFormData')
+      const parsed = safeJsonParse<AnyFormData>(umrahFormDataJson, 'umrahFormData')
       if (!parsed.ok) return NextResponse.json({ success: false, error: parsed.error }, { status: 400 })
-      umrahFormData = parsed.data
+      parsedData = parsed.data
     } else if (bookingDataJson) {
       const parsed = safeJsonParse<LegacyBookingData>(bookingDataJson, 'bookingData')
       if (!parsed.ok) return NextResponse.json({ success: false, error: parsed.error }, { status: 400 })
-      const legacy = parsed.data
-      umrahFormData = convertLegacyToUmrahData(legacy)
-      bookingId = legacy.bookingId || bookingId
+      parsedData = convertLegacyToGeneric(parsed.data)
+      bookingId = parsed.data.bookingId || bookingId
     } else {
       return NextResponse.json({ success: false, error: 'Data missing' }, { status: 400 })
     }
 
-    // 4. Generate PDF
+    const pdfData = normalizeForPdf(parsedData)
+
+    // 4) Generate PDF
     console.log(`📄 Generating PDF for ${bookingId}...`)
-    const pdfDocument = createElement(ConfirmationPDF, { formData: umrahFormData, bookingId })
+    const pdfDocument = createElement(ConfirmationPDF as any, { formData: pdfData, bookingId })
     const pdfBuffer = await renderToBuffer(pdfDocument as any)
-    
+
     const tempDir = '/tmp'
     await fsp.mkdir(tempDir, { recursive: true })
-    const fileName = `confirmation-${bookingId}.pdf`
+    const safeBookingId = bookingId.replace(/[^a-zA-Z0-9-_]/g, '')
+    const fileName = `confirmation-${safeBookingId}.pdf`
+
     filePath = path.join(tempDir, fileName)
     await fsp.writeFile(filePath, pdfBuffer as any)
-    
+
     const sizeKB = (pdfBuffer.byteLength / 1024).toFixed(2)
     console.log(`✅ PDF Saved: ${fileName} (${sizeKB} KB)`)
 
-    // 5. Format Phone Number
-    let formattedPhone = phone.replace(/\D/g, '')
-    if (formattedPhone.startsWith('0')) formattedPhone = '62' + formattedPhone.slice(1)
-    if (!formattedPhone.startsWith('62')) formattedPhone = '62' + formattedPhone
-    if (!formattedPhone.includes('@')) formattedPhone += '@s.whatsapp.net'
+    // 5) Format phone -> WA JID
+    const formattedPhone = formatPhoneForWhatsAppJid(phone)
+    if (!formattedPhone) {
+      return NextResponse.json({ success: false, error: 'Invalid phone number' }, { status: 400 })
+    }
 
-    // 6. Build FormData for WhatsApp API
+    // 6) Build FormData for WhatsApp API
     const whatsappForm = new FormData()
     whatsappForm.append('caption', caption)
     whatsappForm.append('phone', formattedPhone)
@@ -148,20 +178,15 @@ export async function POST(request: NextRequest) {
     })
 
     const url = `${whatsappEndpoint.replace(/\/$/, '')}/send/file`
-    
+
     console.log(`🚀 Sending to: ${url}`)
     console.log(`📱 Phone: ${formattedPhone}`)
     console.log(`🔐 Auth: ${whatsappUsername}:${'*'.repeat(whatsappPassword.length)}`)
 
-    // 7. Send with Basic Auth (INI YANG PENTING!)
+    // 7) Send with Basic Auth
     const whatsappResponse = await axios.post(url, whatsappForm, {
-      headers: {
-        ...whatsappForm.getHeaders(),
-      },
-      auth: {
-        username: whatsappUsername,
-        password: whatsappPassword,
-      },
+      headers: { ...whatsappForm.getHeaders() },
+      auth: { username: whatsappUsername, password: whatsappPassword },
       timeout: 45000,
       maxContentLength: Infinity,
       maxBodyLength: Infinity,
@@ -169,12 +194,10 @@ export async function POST(request: NextRequest) {
     })
 
     const tookMs = Date.now() - start
-    
     console.log(`📥 Response Status: ${whatsappResponse.status}`)
     console.log(`📥 Response Data:`, JSON.stringify(whatsappResponse.data).substring(0, 300))
 
     if (whatsappResponse.status >= 200 && whatsappResponse.status < 300) {
-      console.log('✅ WhatsApp sent successfully!')
       return NextResponse.json({
         success: true,
         message: 'PDF sent successfully',
@@ -184,27 +207,31 @@ export async function POST(request: NextRequest) {
         tookMs,
         whatsappResponse: whatsappResponse.data,
       })
-    } else {
-      console.error('❌ WhatsApp API error')
-      return NextResponse.json({
+    }
+
+    return NextResponse.json(
+      {
         success: false,
         error: 'WhatsApp API failed',
         status: whatsappResponse.status,
         details: whatsappResponse.data,
         tookMs,
-      }, { status: 502 })
-    }
-
+      },
+      { status: 502 },
+    )
   } catch (error: any) {
-    console.error('❌ Fatal error:', error.message)
-    return NextResponse.json({ 
-      success: false, 
-      error: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    }, { status: 500 })
+    console.error('❌ Fatal error:', error?.message || error)
+    return NextResponse.json(
+      {
+        success: false,
+        error: error?.message || 'Unknown error',
+        stack: process.env.NODE_ENV === 'development' ? error?.stack : undefined,
+      },
+      { status: 500 },
+    )
   } finally {
     if (filePath) {
-      try { 
+      try {
         await fsp.unlink(filePath)
         console.log('🗑️ Temp file cleaned')
       } catch {}
@@ -213,9 +240,11 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
-  return NextResponse.json({ 
-    status: 'ready', 
+  return NextResponse.json({
+    status: 'ready',
     endpoint: '/api/send-file',
-    version: '1.0'
+    project: 'hematumrah.rehlatours.id',
+    version: '2.0-hemat',
   })
 }
+
