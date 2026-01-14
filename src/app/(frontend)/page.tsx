@@ -4,7 +4,7 @@
 import { UmrahForm as UmrahHematForm } from '@/components/umrahhemat-form'
 import { getUmrahPackageOptions } from '@/actions/services'
 import { AlertCircle, Package } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { ReloadActions } from '@/components/reload-actions'
 
 export default async function HematUmrahFormPage() {
   let packages: any[] = []
@@ -44,22 +44,7 @@ export default async function HematUmrahFormPage() {
               <h3 className="text-xl font-semibold text-gray-900 mb-3">Gagal Memuat Data</h3>
               <p className="text-gray-600 mb-6 leading-relaxed">{error}</p>
 
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Button
-                  onClick={() => location.reload()}
-                  variant="outline"
-                  className="flex-1 transition-all duration-200 hover:scale-105"
-                >
-                  Coba Lagi
-                </Button>
-                <Button
-                  onClick={() => (window.location.href = '/')}
-                  className="flex-1 text-white transition-all duration-200 hover:scale-105"
-                  style={{ background: 'linear-gradient(135deg, #3a0519 0%, #5d1f35 100%)' }}
-                >
-                  Kembali ke Beranda
-                </Button>
-              </div>
+              <ReloadActions primaryLabel="Coba Lagi" secondaryLabel="Kembali ke Beranda" />
             </div>
           </div>
         </div>
@@ -104,29 +89,19 @@ export default async function HematUmrahFormPage() {
                   Informasi Penting
                 </h2>
               </div>
+
               <div className="p-8 text-center">
                 <div className="w-16 h-16 bg-gradient-to-br from-yellow-100 to-orange-100 rounded-full flex items-center justify-center mx-auto mb-6">
                   <AlertCircle className="w-8 h-8 text-yellow-600" />
                 </div>
+
                 <h3 className="text-xl font-semibold text-gray-900 mb-3">Tidak Ada Paket Tersedia</h3>
+
                 <p className="text-gray-600 mb-6 leading-relaxed">
                   Saat ini tidak ada paket umroh yang tersedia. Silakan hubungi admin untuk info lebih lanjut atau coba lagi nanti.
                 </p>
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <Button
-                    onClick={() => location.reload()}
-                    variant="outline"
-                    className="flex-1 transition-all duration-200 hover:scale-105"
-                  >
-                    Refresh
-                  </Button>
-                  <Button
-                    onClick={() => (window.location.href = '/')}
-                    className="flex-1 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white transition-all duration-200 hover:scale-105"
-                  >
-                    Kembali ke Beranda
-                  </Button>
-                </div>
+
+                <ReloadActions primaryLabel="Refresh" secondaryLabel="Kembali ke Beranda" />
               </div>
             </div>
           </div>
@@ -137,4 +112,5 @@ export default async function HematUmrahFormPage() {
     </div>
   )
 }
+
 
