@@ -86,7 +86,6 @@ function formatPhoneForWhatsApp(phone: string): string {
     formatted = '62' + formatted
   }
   
-  console.log(`📱 Phone formatted: ${phone} → ${formatted}`)
   return formatted
 }
 
@@ -99,67 +98,53 @@ async function sendPdfToWhatsapp(params: {
 }) {
   const { baseUrl, phone, bookingId, umrahFormData, caption } = params
 
-  // Format phone number dengan benar
-  const formattedPhone = formatPhoneForWhatsApp(phone)
-  
-  if (!formattedPhone) {
-    throw new Error('Phone number is empty or invalid')
-  }
-
-  console.log('📤 Sending WhatsApp PDF to:', formattedPhone)
-
-  const fd = new FormData()
-  fd.append('phone', formattedPhone) // Gunakan formatted phone
-  fd.append('bookingId', bookingId)
-  fd.append('umrahFormData', JSON.stringify(umrahFormData))
-  if (caption) fd.append('caption', caption)
-
-  const res = await fetch(`${baseUrl}/api/send-file`, {
-    method: 'POST',
-    body: fd,
-  })
-
-  const text = await res.text()
-  let payload: any = null
   try {
-    payload = JSON.parse(text)
-  } catch {
-    payload = { raw: text }
-  }
+    const formattedPhone = formatPhoneForWhatsApp(phone)
+    if (!formattedPhone) throw new Error('Invalid phone number')
 
-  if (!res.ok) {
-    throw new Error(
-      `WA API failed (${res.status}) for ${formattedPhone}. Response: ${JSON.stringify(payload)}`,
-    )
-  }
+    const apiUrl = `${baseUrl}/api/send-file`
+    console.log(`📤 Sending PDF to ${formattedPhone} via ${apiUrl}`)
 
-  console.log('✅ WhatsApp sent successfully to:', formattedPhone)
-  return payload
+    const fd = new FormData()
+    fd.append('phone', formattedPhone)
+    fd.append('bookingId', bookingId)
+    fd.append('umrahFormData', JSON.stringify(umrahFormData))
+    if (caption) fd.append('caption', caption)
+
+    const res = await fetch(apiUrl, {
+      method: 'POST',
+      body: fd,
+    })
+
+    const text = await res.text()
+    if (!res.ok) {
+      console.error(`❌ WA API Error (${res.status}): ${text}`)
+      return { success: false, error: text }
+    }
+
+    console.log(`✅ WA Success to ${formattedPhone}`)
+    return JSON.parse(text)
+  } catch (error: any) {
+    console.error(`❌ SendPdfToWhatsapp Failed: ${error.message}`)
+    throw error
+  }
 }
 
 export async function getUmrahPackageOptions() {
   try {
     const payload = await getPayload({ config })
-
     const packages = await payload.find({
       collection: 'umrah-package',
       sort: 'name',
-      select: {
-        id: true,
-        name: true,
-        price: true,
-        duration: true,
-      },
+      select: { id: true, name: true, price: true, duration: true },
       limit: 100,
     })
-
     const options = packages.docs.map((pkg: any) => ({
       id: pkg.id,
       name: pkg.name,
       price: pkg.price,
       duration: pkg.duration,
     }))
-
     return { success: true, data: options }
   } catch (error: any) {
     console.error('Error fetching package options:', error)
@@ -175,9 +160,7 @@ export async function submitUmrahForm(formData: any): Promise<SubmitResponse> {
   console.log('=== SUBMIT FORM START ===')
 
   try {
-    if (!formData) {
-      return { success: false, error: 'Form data is missing' }
-    }
+    if (!formData) return { success: false, error: 'Form data is missing' }
 
     const simpleValidationResult = validateUmrahFormSimple(formData)
     if (!simpleValidationResult.success) {
@@ -189,7 +172,6 @@ export async function submitUmrahForm(formData: any): Promise<SubmitResponse> {
     }
 
     const cleanData = buildCleanData(formData)
-
     const payload = await getPayload({ config })
 
     const result = await payload.create({
@@ -198,32 +180,24 @@ export async function submitUmrahForm(formData: any): Promise<SubmitResponse> {
     })
 
     const bookingId = (result as any).booking_id || `RT-${Date.now()}`
+    console.log('✅ Data saved. ID:', bookingId)
 
-    console.log('✅ Data saved to database. Booking ID:', bookingId)
-
-    // Cek BASE_URL dengan fallback
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL
+    // --- FIX URL HANDLING ---
+    // Gunakan environment variable atau fallback hardcoded jika perlu
+    let baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL || 'https://umrah.rehlatours.id'
     
-    if (!baseUrl) {
-      console.error('❌ NEXT_PUBLIC_BASE_URL is missing. Cannot send WhatsApp.')
-      return {
-        success: true,
-        data: {
-          id: result.id,
-          booking_id: bookingId,
-          message: `Pendaftaran berhasil! ID Booking Anda: ${bookingId}. (WhatsApp notification disabled - BASE_URL not configured)`,
-        },
-      }
+    // Pastikan URL valid
+    if (!baseUrl.startsWith('http')) {
+      baseUrl = `https://${baseUrl}`
     }
+    
+    // Hapus trailing slash jika ada
+    baseUrl = baseUrl.replace(/\/$/, '')
 
-    // Pastikan baseUrl memiliki https://
-    const fullBaseUrl = baseUrl.startsWith('http') ? baseUrl : `https://${baseUrl}`
-    console.log('🌐 Using BASE_URL:', fullBaseUrl)
+    console.log('🌐 Base URL for API:', baseUrl)
 
-    // Format phone numbers dengan benar
-    const customerPhone = formatPhoneForWhatsApp(
-      cleanData.whatsapp_number || cleanData.phone_number || ''
-    )
+    // --- PREPARE WHATSAPP DATA ---
+    const customerPhone = formatPhoneForWhatsApp(cleanData.whatsapp_number || cleanData.phone_number || '')
     const adminPhone = formatPhoneForWhatsApp(process.env.ADMIN_WA_PHONE || '')
 
     const captionCustomer = `🕌 *Konfirmasi Pendaftaran Umrah*
@@ -235,87 +209,60 @@ Alhamdulillah! Pendaftaran umrah Anda telah berhasil dicatat.
 📋 *Detail Pendaftaran:*
 • Booking ID: ${bookingId}
 • Nama: ${cleanData.name}
-• Email: ${cleanData.email}
 
-Terlampir adalah konfirmasi pendaftaran Anda dalam format PDF.
-
-Tim kami akan segera menghubungi Anda dalam 1x24 jam untuk konfirmasi lebih lanjut.
+Terlampir konfirmasi pendaftaran (PDF). Tim kami akan segera menghubungi Anda.
 
 Jazakallahu khairan,
 *Rehla Tours Team*`
 
     const captionAdmin = `📥 *Pendaftaran Umrah Baru*
-
-ID Booking: ${bookingId}
+ID: ${bookingId}
 Nama: ${cleanData.name}
-Email: ${cleanData.email}
-WhatsApp: ${customerPhone}
-Paket: ${cleanData.umrah_package}
-Payment: ${cleanData.payment_method}
+WA: ${customerPhone}
+Paket: ${cleanData.umrah_package}`
 
-Silakan follow up dalam 1x24 jam.`
-
-    let waCustomer: any = null
-    let waAdmin: any = null
-
-    // Kirim WhatsApp ke customer
-    if (customerPhone) {
-      try {
-        console.log('📤 Sending WhatsApp to customer...')
-        waCustomer = await sendPdfToWhatsapp({
-          baseUrl: fullBaseUrl,
-          phone: customerPhone,
-          bookingId,
-          umrahFormData: cleanData,
-          caption: captionCustomer,
-        })
-        console.log('✅ WhatsApp sent to customer successfully')
-      } catch (e) {
-        console.error('❌ Failed sending WA to customer:', e)
-        // Jangan fail seluruh proses, hanya log error
-      }
-    } else {
-      console.warn('⚠️ Customer phone/whatsapp number is empty; skip sending to customer.')
-    }
-
-    // Kirim WhatsApp ke admin
-    if (adminPhone) {
-      try {
-        console.log('📤 Sending WhatsApp to admin...')
-        waAdmin = await sendPdfToWhatsapp({
-          baseUrl: fullBaseUrl,
-          phone: adminPhone,
-          bookingId,
-          umrahFormData: cleanData,
-          caption: captionAdmin,
-        })
-        console.log('✅ WhatsApp sent to admin successfully')
-      } catch (e) {
-        console.error('❌ Failed sending WA to admin:', e)
-        // Jangan fail seluruh proses, hanya log error
-      }
-    } else {
-      console.warn('⚠️ ADMIN_WA_PHONE is not set; skip sending to admin.')
-    }
-
-    console.log('=== SUBMIT FORM SUCCESS ===')
+    // --- SEND WHATSAPP (NON-BLOCKING / BACKGROUND) ---
+    // Kita tidak menggunakan 'await' di sini agar user langsung dapat response sukses
+    // Promise.allSettled memastikan error di satu request tidak menghentikan yang lain
+    Promise.allSettled([
+      customerPhone ? sendPdfToWhatsapp({
+        baseUrl,
+        phone: customerPhone,
+        bookingId,
+        umrahFormData: cleanData,
+        caption: captionCustomer,
+      }) : Promise.resolve(),
+      
+      adminPhone ? sendPdfToWhatsapp({
+        baseUrl,
+        phone: adminPhone,
+        bookingId,
+        umrahFormData: cleanData,
+        caption: captionAdmin,
+      }) : Promise.resolve()
+    ]).then((results) => {
+      console.log('📝 Background WhatsApp tasks completed')
+      results.forEach((res, idx) => {
+        if (res.status === 'rejected') {
+           console.error(`❌ WA Task ${idx} failed:`, res.reason)
+        }
+      })
+    })
 
     return {
       success: true,
       data: {
         id: result.id,
         booking_id: bookingId,
-        message: `Pendaftaran berhasil! ID Booking Anda: ${bookingId}.`,
-        waCustomer,
-        waAdmin,
+        message: `Pendaftaran berhasil! ID Booking: ${bookingId}. Notifikasi WhatsApp sedang dikirim.`,
       },
     }
+
   } catch (error) {
-    console.log('=== SUBMIT FORM ERROR ===')
-    console.error(error)
+    console.error('=== SUBMIT FORM ERROR ===', error)
     return {
       success: false,
-      error: 'Terjadi kesalahan sistem. Silakan coba lagi atau hubungi customer service.',
+      error: 'Terjadi kesalahan sistem. Silakan coba lagi.',
     }
   }
 }
