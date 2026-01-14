@@ -1,7 +1,7 @@
 // src/app/(frontend)/page.tsx
 // Server Component: fetch paket di server, render UmrahHematForm (client) sebagai child
 
-import { UmrahForm as UmrahHematForm } from '@/components/ui/umrahhemat-form'
+import { UmrahForm as UmrahHematForm } from '@/components/umrahhemat-form'
 import { getUmrahPackageOptions } from '@/actions/services'
 import { AlertCircle, Package } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -110,9 +110,8 @@ export default async function HematUmrahFormPage() {
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-3">Tidak Ada Paket Tersedia</h3>
                 <p className="text-gray-600 mb-6 leading-relaxed">
-                  Saat ini tidak ada paket umroh yang tersedia. Silakan hubungi admin atau coba lagi nanti.
+                  Saat ini tidak ada paket umroh yang tersedia. Silakan hubungi admin untuk info lebih lanjut atau coba lagi nanti.
                 </p>
-
                 <div className="flex flex-col sm:flex-row gap-3">
                   <Button
                     onClick={() => location.reload()}
@@ -138,3 +137,4 @@ export default async function HematUmrahFormPage() {
     </div>
   )
 }
+
