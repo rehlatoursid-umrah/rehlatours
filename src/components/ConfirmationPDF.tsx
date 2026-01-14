@@ -1,33 +1,27 @@
-import { Page, Text, View, Document, StyleSheet, Font } from '@react-pdf/renderer'
+import { Page, Text, View, Document, StyleSheet, Font, Image } from '@react-pdf/renderer'
 import { UmrahFormData } from '@/types/form'
 
-// Register fonts with fallback to built-in fonts if URLs fail
+// Register fonts... (kode font tetap sama, tidak saya ubah)
 try {
   Font.register({
     family: 'Inter',
     fonts: [
-      {
-        src: 'https://fonts.gstatic.com/s/inter/v13/UcC73FwrK3iLTeHuS_fvQtMwCp50KnMa2JL7SUc.woff2',
-      },
-      { src: 'Helvetica', fontWeight: 'normal' }, // fallback
+      { src: 'https://fonts.gstatic.com/s/inter/v13/UcC73FwrK3iLTeHuS_fvQtMwCp50KnMa2JL7SUc.woff2' },
+      { src: 'Helvetica', fontWeight: 'normal' },
     ],
   })
-
   Font.register({
     family: 'Inter-Bold',
     fonts: [
       { src: 'https://fonts.gstatic.com/s/inter/v13/UcC73FwrK3iLTeHuS_fvQtMwCp50KnMa1ZL7.woff2' },
-      { src: 'Helvetica-Bold', fontWeight: 'bold' }, // fallback
+      { src: 'Helvetica-Bold', fontWeight: 'bold' },
     ],
   })
-
   Font.register({
     family: 'Inter-SemiBold',
     fonts: [
-      {
-        src: 'https://fonts.gstatic.com/s/inter/v13/UcC73FwrK3iLTeHuS_fvQtMwCp50KnMa2pL7SUc.woff2',
-      },
-      { src: 'Helvetica-Bold', fontWeight: 600 }, // fallback
+      { src: 'https://fonts.gstatic.com/s/inter/v13/UcC73FwrK3iLTeHuS_fvQtMwCp50KnMa2pL7SUc.woff2' },
+      { src: 'Helvetica-Bold', fontWeight: 600 },
     ],
   })
 } catch (error) {
@@ -43,26 +37,42 @@ const styles = StyleSheet.create({
     paddingBottom: 28,
     fontSize: 10,
   },
+  
   header: {
     backgroundColor: '#3A0519',
-    paddingVertical: 20,
-    paddingHorizontal: 18,
+    paddingVertical: 15,    
+    paddingHorizontal: 20,
     borderRadius: 8,
     marginBottom: 22,
+    flexDirection: 'row',   
+    alignItems: 'center',   
+    justifyContent: 'flex-start', 
+  },
+  logo: {
+    width: 50,              
+    height: 50,
+    marginRight: 15,        
+    objectFit: 'contain',
+  },
+  headerTextContainer: {
+    flexDirection: 'column',
+    justifyContent: 'center',
   },
   title: {
     fontFamily: 'Helvetica-Bold',
     fontSize: 24,
     color: '#FFFFFF',
-    textAlign: 'center',
-    marginBottom: 6,
+    textAlign: 'left',      
+    marginBottom: 4,
   },
   subtitle: {
     fontSize: 12,
     color: '#F3E7EB',
     fontFamily: 'Helvetica',
-    textAlign: 'center',
+    textAlign: 'left',      
   },
+  // --- BATAS PERUBAHAN HEADER ---
+  
   content: {
     paddingTop: 8,
   },
@@ -155,9 +165,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     fontFamily: 'Helvetica',
   },
-  sectionSpacer: {
-    marginBottom: 8,
-  },
 })
 
 interface ConfirmationPDFProps {
@@ -165,15 +172,12 @@ interface ConfirmationPDFProps {
   bookingId: string
 }
 
-// Helper function to safely access formData properties with fallbacks
+// Helper functions (tetap sama)
 const safeGet = (obj: any, path: string, defaultValue: any = '-'): any => {
   if (!obj || typeof obj !== 'object') return defaultValue
-  return obj[path] !== undefined && obj[path] !== null && obj[path] !== ''
-    ? obj[path]
-    : defaultValue
+  return obj[path] !== undefined && obj[path] !== null && obj[path] !== '' ? obj[path] : defaultValue
 }
 
-// Helper function to format date
 const formatDate = (dateString: string): string => {
   try {
     if (!dateString || dateString === '-') return '-'
@@ -189,7 +193,6 @@ const formatDate = (dateString: string): string => {
   }
 }
 
-// Helper function to format text values
 const formatValue = (value: any): string => {
   if (value === null || value === undefined || value === '') return '-'
   if (typeof value === 'boolean') return value ? 'Ya' : 'Tidak'
@@ -197,13 +200,11 @@ const formatValue = (value: any): string => {
   return String(value)
 }
 
-// Helper function to get gender label
 const getGenderLabel = (gender: string): string => {
   if (!gender) return '-'
   return gender === 'male' ? 'Laki-laki' : gender === 'female' ? 'Perempuan' : gender
 }
 
-// Helper function to get relationship label
 const getRelationshipLabel = (relationship: string): string => {
   if (!relationship) return '-'
   const labels: Record<string, string> = {
@@ -216,7 +217,6 @@ const getRelationshipLabel = (relationship: string): string => {
   return labels[relationship] || relationship
 }
 
-// Helper function to get marital status label
 const getMaritalStatusLabel = (status: string): string => {
   if (!status) return '-'
   const labels: Record<string, string> = {
@@ -227,7 +227,6 @@ const getMaritalStatusLabel = (status: string): string => {
   return labels[status] || status
 }
 
-// Helper function to get payment method label
 const getPaymentMethodLabel = (method: string): string => {
   if (!method) return '-'
   const labels: Record<string, string> = {
@@ -238,23 +237,43 @@ const getPaymentMethodLabel = (method: string): string => {
 }
 
 export default function ConfirmationPDF({ formData, bookingId }: ConfirmationPDFProps) {
-  // Ensure formData exists and has required properties
   const safeFormData = formData || {}
   const safeBookingId = bookingId || `RT-${Date.now()}`
+  
+  // Pastikan URL domain sesuai environment (Production/Local)
+  // Atau gunakan path relatif jika di local, tapi untuk PDF generator biasanya butuh full URL atau base64
+  // Di sini saya asumsikan logo ada di public folder dan bisa diakses via window.location.origin
+  // Jika error di server-side, ganti 'window.location.origin' dengan process.env.NEXT_PUBLIC_BASE_URL
+  const logoUrl = typeof window !== 'undefined' 
+    ? `${window.location.origin}/logo.png` 
+    : '/logo.png'; 
 
   return (
     <Document>
       <Page size="A4" style={styles.page}>
+        
+        {/* --- HEADER YANG SUDAH DIUPDATE --- */}
         <View style={styles.header}>
-          <Text style={styles.title}>KONFIRMASI PEMESANAN</Text>
-          <Text style={styles.subtitle}>Rehla Indonesia Tours & Travel | www.rehlatours.id </Text>
+          {/* Logo di kiri */}
+          <Image 
+            style={styles.logo} 
+            src={/rehla.png}
+          />
+          
+          {/* Teks di kanan Logo (Rata Kiri) */}
+          <View style={styles.headerTextContainer}>
+            <Text style={styles.title}>KONFIRMASI PEMESANAN</Text>
+            <Text style={styles.subtitle}>Rehla Indonesia Tours & Travel</Text>
+            <Text style={[styles.subtitle, { fontSize: 10, marginTop: 2, opacity: 0.9 }]}>www.rehlatours.id</Text>
+          </View>
         </View>
+        {/* --- END HEADER --- */}
 
         <View style={styles.content}>
-          {/* Booking ID */}
           <Text style={styles.bookingId}>ID Pemesanan: {safeBookingId}</Text>
 
-          {/* Personal Information */}
+          {/* Sisa konten ke bawah TETAP SAMA seperti kode asli ... */}
+          
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>Informasi Pribadi</Text>
@@ -264,227 +283,163 @@ export default function ConfirmationPDF({ formData, bookingId }: ConfirmationPDF
               <Text style={styles.label}>Nama Lengkap</Text>
               <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'name'))}</Text>
             </View>
-
             <View style={styles.row}>
               <Text style={styles.label}>Jenis Kelamin</Text>
               <Text style={styles.value}>{getGenderLabel(safeGet(safeFormData, 'gender'))}</Text>
             </View>
-
             <View style={styles.row}>
               <Text style={styles.label}>Tempat Lahir</Text>
-              <Text style={styles.value}>
-                {formatValue(safeGet(safeFormData, 'place_of_birth'))}
-              </Text>
+              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'place_of_birth'))}</Text>
             </View>
-
             <View style={styles.row}>
               <Text style={styles.label}>Tanggal Lahir</Text>
               <Text style={styles.value}>{formatDate(safeGet(safeFormData, 'birth_date'))}</Text>
             </View>
-
             <View style={styles.row}>
               <Text style={styles.label}>Nama Ayah</Text>
               <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'father_name'))}</Text>
             </View>
-
             <View style={styles.row}>
               <Text style={styles.label}>Nama Ibu</Text>
               <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'mother_name'))}</Text>
             </View>
-
             <View style={styles.row}>
               <Text style={styles.label}>Status Pernikahan</Text>
-              <Text style={styles.value}>
-                {getMaritalStatusLabel(safeGet(safeFormData, 'mariage_status'))}
-              </Text>
+              <Text style={styles.value}>{getMaritalStatusLabel(safeGet(safeFormData, 'mariage_status'))}</Text>
             </View>
-
             <View style={[styles.row, styles.lastRow]}>
               <Text style={styles.label}>Pekerjaan</Text>
               <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'occupation'))}</Text>
             </View>
           </View>
 
-          {/* Contact Information */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>Informasi Kontak</Text>
             </View>
-
             <View style={styles.row}>
               <Text style={styles.label}>Email</Text>
               <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'email'))}</Text>
             </View>
-
             <View style={styles.row}>
               <Text style={styles.label}>No. Telepon</Text>
               <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'phone_number'))}</Text>
             </View>
-
             <View style={[styles.row, styles.lastRow]}>
               <Text style={styles.label}>WhatsApp</Text>
-              <Text style={styles.value}>
-                {formatValue(safeGet(safeFormData, 'whatsapp_number'))}
-              </Text>
+              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'whatsapp_number'))}</Text>
             </View>
           </View>
 
-          {/* Address Information */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>Informasi Alamat</Text>
             </View>
-
             <View style={styles.row}>
               <Text style={styles.label}>Alamat</Text>
               <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'address'))}</Text>
             </View>
-
             <View style={styles.row}>
               <Text style={styles.label}>Kota</Text>
               <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'city'))}</Text>
             </View>
-
             <View style={styles.row}>
               <Text style={styles.label}>Provinsi</Text>
               <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'province'))}</Text>
             </View>
-
             <View style={[styles.row, styles.lastRow]}>
               <Text style={styles.label}>Kode Pos</Text>
               <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'postal_code'))}</Text>
             </View>
           </View>
 
-          {/* Document Information */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>Informasi Dokumen</Text>
             </View>
-
             <View style={styles.row}>
               <Text style={styles.label}>NIK</Text>
               <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'nik_number'))}</Text>
             </View>
-
             <View style={styles.row}>
               <Text style={styles.label}>No. Paspor</Text>
-              <Text style={styles.value}>
-                {formatValue(safeGet(safeFormData, 'passport_number'))}
-              </Text>
+              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'passport_number'))}</Text>
             </View>
-
             <View style={styles.row}>
               <Text style={styles.label}>Tanggal Terbit</Text>
               <Text style={styles.value}>{formatDate(safeGet(safeFormData, 'date_of_issue'))}</Text>
             </View>
-
             <View style={styles.row}>
               <Text style={styles.label}>Tanggal Berakhir</Text>
               <Text style={styles.value}>{formatDate(safeGet(safeFormData, 'expiry_date'))}</Text>
             </View>
-
             <View style={[styles.row, styles.lastRow]}>
               <Text style={styles.label}>Tempat Terbit</Text>
-              <Text style={styles.value}>
-                {formatValue(safeGet(safeFormData, 'place_of_issue'))}
-              </Text>
+              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'place_of_issue'))}</Text>
             </View>
           </View>
 
-          {/* Health Information */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>Informasi Kesehatan</Text>
             </View>
-
             <View style={styles.row}>
               <Text style={styles.label}>Penyakit Khusus</Text>
-              <Text style={styles.value}>
-                {formatValue(safeGet(safeFormData, 'specific_disease'))}
-              </Text>
+              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'specific_disease'))}</Text>
             </View>
-
             {safeGet(safeFormData, 'specific_disease') && safeGet(safeFormData, 'illness') && (
               <View style={styles.row}>
                 <Text style={styles.label}>Detail Penyakit</Text>
                 <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'illness'))}</Text>
               </View>
             )}
-
             <View style={styles.row}>
               <Text style={styles.label}>Kebutuhan Khusus</Text>
-              <Text style={styles.value}>
-                {formatValue(safeGet(safeFormData, 'special_needs'))}
-              </Text>
+              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'special_needs'))}</Text>
             </View>
-
             <View style={[styles.row, styles.lastRow]}>
               <Text style={styles.label}>Kursi Roda</Text>
               <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'wheelchair'))}</Text>
             </View>
           </View>
 
-          {/* Emergency Contact */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>Kontak Darurat</Text>
             </View>
-
             <View style={styles.row}>
               <Text style={styles.label}>Nama</Text>
-              <Text style={styles.value}>
-                {formatValue(safeGet(safeFormData, 'emergency_contact_name'))}
-              </Text>
+              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'emergency_contact_name'))}</Text>
             </View>
-
             <View style={styles.row}>
               <Text style={styles.label}>Hubungan</Text>
-              <Text style={styles.value}>
-                {getRelationshipLabel(safeGet(safeFormData, 'relationship'))}
-              </Text>
+              <Text style={styles.value}>{getRelationshipLabel(safeGet(safeFormData, 'relationship'))}</Text>
             </View>
-
             <View style={[styles.row, styles.lastRow]}>
               <Text style={styles.label}>No. Telepon</Text>
-              <Text style={styles.value}>
-                {formatValue(safeGet(safeFormData, 'emergency_contact_phone'))}
-              </Text>
+              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'emergency_contact_phone'))}</Text>
             </View>
           </View>
 
-          {/* Package Information */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>Informasi Paket</Text>
             </View>
-
             <View style={styles.row}>
               <Text style={styles.label}>Paket Umrah</Text>
-              <Text style={styles.value}>
-                {formatValue(safeGet(safeFormData, 'umrah_package'))}
-              </Text>
+              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'umrah_package'))}</Text>
             </View>
-
             <View style={styles.row}>
               <Text style={styles.label}>Metode Pembayaran</Text>
-              <Text style={styles.value}>
-                {getPaymentMethodLabel(safeGet(safeFormData, 'payment_method'))}
-              </Text>
+              <Text style={styles.value}>{getPaymentMethodLabel(safeGet(safeFormData, 'payment_method'))}</Text>
             </View>
-
             <View style={styles.row}>
               <Text style={styles.label}>Pernah Umrah</Text>
-              <Text style={styles.value}>
-                {formatValue(safeGet(safeFormData, 'has_performed_umrah'))}
-              </Text>
+              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'has_performed_umrah'))}</Text>
             </View>
-
             <View style={[styles.row, styles.lastRow]}>
               <Text style={styles.label}>Pernah Haji</Text>
-              <Text style={styles.value}>
-                {formatValue(safeGet(safeFormData, 'has_performed_hajj'))}
-              </Text>
+              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'has_performed_hajj'))}</Text>
             </View>
           </View>
 
@@ -500,14 +455,7 @@ export default function ConfirmationPDF({ formData, bookingId }: ConfirmationPDF
           <View style={styles.divider} />
 
           <View style={styles.footer}>
-            <Text
-              style={{
-                fontFamily: 'Helvetica-Bold',
-                color: '#111827',
-                marginBottom: 6,
-                fontSize: 10,
-              }}
-            >
+            <Text style={{ fontFamily: 'Helvetica-Bold', color: '#111827', marginBottom: 6, fontSize: 10 }}>
               Terima kasih telah mempercayakan perjalanan Anda kepada Rehla Indonesia Tours & Travel
             </Text>
             <Text style={{ marginBottom: 4, fontSize: 9 }}>
