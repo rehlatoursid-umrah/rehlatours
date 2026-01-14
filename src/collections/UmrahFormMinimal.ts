@@ -271,12 +271,15 @@ export const UmrahFormMinimal: CollectionConfig = {
         return data
       },
     ],
-     afterChange: [
+      afterChange: [
     async ({ doc, req, operation }) => {
       if (operation === 'create') {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://umrah.rehlatours.id'
         await fetch(`${baseUrl}/api/send-file`, ...)
       }
+    }
+  ]
+}
 
         // Send WhatsApp notification with PDF confirmation for both create and update
         try {
