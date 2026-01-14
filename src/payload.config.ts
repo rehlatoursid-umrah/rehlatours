@@ -1,46 +1,37 @@
-// storage-adapter-import-placeholder
-import { mongooseAdapter } from '@payloadcms/db-mongodb'
-import { payloadCloudPlugin } from '@payloadcms/payload-cloud'
-import { lexicalEditor } from '@payloadcms/richtext-lexical'
 import path from 'path'
 import { buildConfig } from 'payload'
-import { fileURLToPath } from 'url'
-import sharp from 'sharp'
+import { mongooseAdapter } from '@payloadcms/db-mongodb'
+import { lexicalEditor } from '@payloadcms/richtext-lexical'
 
-import { Users } from './collections/Users'
-import { Media } from './collections/Media'
-import { UmrahFormMinimal } from './collections/UmrahFormMinimal'
-import { UmrahPackage } from './collections/UmrahPackage'
+// ====== COLLECTIONS ======
 import { Hematumrahdaftar } from './collections/Hematumrahdaftar'
+import { UmrahPackage } from './collections/UmrahPackage'
 
-const filename = fileURLToPath(import.meta.url)
-const dirname = path.dirname(filename)
+// (opsional) Users kalau kamu pakai auth
+// import { Users } from './collections/Users'
 
 export default buildConfig({
-  admin: {
-    user: Users.slug,
-    importMap: {
-      baseDir: path.resolve(dirname),
-    },
-  },
-  collections: [
-    Users,
-    Media,
-    UmrahFormMinimal,
-    UmrahPackage,
-    Hematumrahdaftar, // Form Umrah Hemat (Tabungan Umrah Custom)
-  ],
-  editor: lexicalEditor(),
-  secret: process.env.PAYLOAD_SECRET || '',
-  typescript: {
-    outputFile: path.resolve(dirname, 'payload-types.ts'),
-  },
+  serverURL: process.env.NEXT_PUBLIC_SERVER_URL || process.env.PAYLOAD_PUBLIC_SERVER_URL,
+  secret: process.env.PAYLOAD_SECRET || 'PLEASE_SET_PAYLOAD_SECRET',
+
   db: mongooseAdapter({
-    url: process.env.DATABASE_URI || '',
+    url: process.env.DATABASE_URI || process.env.MONGODB_URI || '',
   }),
-  sharp,
-  plugins: [
-    payloadCloudPlugin(),
-    // storage-adapter-placeholder
+
+  admin: {
+    user: 'users', // kalau kamu belum punya collection users, comment baris ini
+  },
+
+  editor: lexicalEditor({}),
+
+  collections: [
+    // Users, // kalau kamu pakai auth, aktifkan ini juga
+    UmrahPackage,
+    Hematumrahdaftar,
   ],
+
+  typescript: {
+    outputFile: path.resolve(__dirname, 'payload-types.ts'),
+  },
 })
+
