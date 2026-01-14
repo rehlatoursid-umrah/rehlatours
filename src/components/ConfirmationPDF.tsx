@@ -1,7 +1,6 @@
 import { Page, Text, View, Document, StyleSheet, Font, Image } from '@react-pdf/renderer'
 import { UmrahFormData } from '@/types/form'
 
-// Register fonts... (kode font tetap sama, tidak saya ubah)
 try {
   Font.register({
     family: 'Inter',
@@ -257,14 +256,12 @@ export default function ConfirmationPDF({ formData, bookingId }: ConfirmationPDF
             src={/rehla.png}
           />
           
-          {/* Teks di kanan Logo (Rata Kiri) */}
           <View style={styles.headerTextContainer}>
             <Text style={styles.title}>KONFIRMASI PEMESANAN</Text>
             <Text style={styles.subtitle}>Rehla Indonesia Tours & Travel</Text>
             <Text style={[styles.subtitle, { fontSize: 10, marginTop: 2, opacity: 0.9 }]}>www.rehlatours.id</Text>
           </View>
         </View>
-        {/* --- END HEADER --- */}
 
         <View style={styles.content}>
           <Text style={styles.bookingId}>ID Pemesanan: {safeBookingId}</Text>
