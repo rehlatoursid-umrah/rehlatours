@@ -16,7 +16,7 @@ export const UmrahFormMinimal: CollectionConfig = {
     {
       name: 'booking_id',
       type: 'text',
-      required: false, // Make it optional to avoid validation issues
+      required: false,
       label: 'ID Pemesanan',
     },
     {
@@ -263,76 +263,16 @@ export const UmrahFormMinimal: CollectionConfig = {
   hooks: {
     beforeChange: [
       ({ data, operation }) => {
-        // Simple booking ID generation without complex logic
+        // Generate booking ID only on create
         if (operation === 'create' && !data.booking_id) {
           const timestamp = Date.now().toString().slice(-4)
           data.booking_id = `RT-${timestamp}`
         }
         return data
       },
-  
-      hooks: {
-  afterChange: [
-    async ({ doc, req, operation }) => {
-      if (operation === 'create') {
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://umrah.rehlatours.id'
-        await fetch(`${baseUrl}/api/send-file`, ...)
-      }
-    }
-  ]
-}
-
-
-        // Send WhatsApp notification with PDF confirmation for both create and update
-        try {
-          const phone = doc.whatsapp_number || doc.phone_number
-          if (phone) {
-            // Prepare booking data for PDF generation
-            const bookingData = {
-              bookingId: doc.booking_id,
-              customerName: doc.name,
-              email: doc.email,
-              whatsappNumber: doc.whatsapp_number,
-              phoneNumber: doc.phone_number,
-              packageName: doc.umrah_package?.name || 'Paket Umrah',
-              paymentMethod: doc.payment_method === 'lunas' ? 'Lunas' : 'Cicilan 60%',
-            }
-
-            // Determine caption based on operation
-            const caption =
-              operation === 'create'
-                ? `Terima kasih atas pemesanan Anda. Berikut adalah konfirmasi pemesanan dengan ID: ${doc.booking_id}`
-                : `Update informasi pemesanan Anda dengan ID: ${doc.booking_id}`
-
-            // Create form data for WhatsApp API
-            const formData = new FormData()
-            formData.append('phone', `${phone}@s.whatsapp.net`)
-            formData.append('bookingData', JSON.stringify(bookingData))
-            formData.append('caption', caption)
-            formData.append('is_forwarded', 'false')
-            formData.append('duration', '3600')
-
-            // Send to our API endpoint that generates and sends PDF
-            const response = await fetch(`${process.env.BASE_URL}/api/send-file`, {
-              method: 'POST',
-              body: formData,
-              headers: {
-                Authorization: `Basic ${Buffer.from('username:password').toString('base64')}`,
-              },
-            })
-
-            if (response.ok) {
-              console.log(
-                `PDF confirmation sent via WhatsApp for booking ${doc.booking_id} (${operation})`,
-              )
-            } else {
-              console.error('Failed to send PDF confirmation:', await response.text())
-            }
-          }
-        } catch (error) {
-          console.error('Failed to send WhatsApp PDF notification:', error)
-        }
-      },
     ],
+    // HAPUS afterChange hook karena sudah dihandle di services.ts
+    // Ini yang bikin error "undefined/api/send-file" dan duplikat notifikasi
   },
 }
+
