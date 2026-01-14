@@ -4,17 +4,14 @@ export const Hematumrahdaftar: CollectionConfig = {
   slug: 'hemat-umrah-daftar',
   admin: {
     useAsTitle: 'name',
-    defaultColumns: ['name', 'booking_id', 'status', 'installment_amount', 'createdAt'],
+    defaultColumns: ['name', 'booking_id', 'status', 'installmentamount', 'createdAt'],
   },
 
-  // NOTE SECURITY:
-  // Untuk form publik: create & read boleh true.
-  // Update/delete sebaiknya dibatasi admin saja (kalau kamu belum punya auth, minimal false dulu).
   access: {
     read: () => true,
     create: () => true,
-    update: ({ req }) => Boolean(req.user), // ganti sesuai role admin kamu kalau ada
-    delete: ({ req }) => Boolean(req.user), // ganti sesuai role admin kamu kalau ada
+    update: ({ req }) => Boolean(req.user),
+    delete: ({ req }) => Boolean(req.user),
   },
 
   fields: [
@@ -22,7 +19,7 @@ export const Hematumrahdaftar: CollectionConfig = {
     {
       name: 'booking_id',
       type: 'text',
-      required: false, // di-generate lewat hook
+      required: false,
       label: 'ID Pemesanan',
       admin: { readOnly: true },
     },
@@ -40,31 +37,11 @@ export const Hematumrahdaftar: CollectionConfig = {
       ],
     },
 
-    // --- DATA PRIBADI (minimal untuk UI baru) ---
-    {
-      name: 'name',
-      type: 'text',
-      required: true,
-      label: 'Nama Lengkap',
-    },
-    {
-      name: 'email',
-      type: 'email',
-      required: true,
-      label: 'Email',
-    },
-    {
-      name: 'phone_number',
-      type: 'text',
-      required: true,
-      label: 'Nomor Telepon',
-    },
-    {
-      name: 'whatsapp_number',
-      type: 'text',
-      required: true,
-      label: 'WhatsApp',
-    },
+    // --- DATA PRIBADI ---
+    { name: 'name', type: 'text', required: true, label: 'Nama Lengkap' },
+    { name: 'email', type: 'email', required: true, label: 'Email' },
+    { name: 'phone_number', type: 'text', required: true, label: 'Nomor Telepon' },
+    { name: 'whatsapp_number', type: 'text', required: true, label: 'WhatsApp' },
     {
       name: 'gender',
       type: 'select',
@@ -75,40 +52,15 @@ export const Hematumrahdaftar: CollectionConfig = {
         { label: 'Perempuan', value: 'female' },
       ],
     },
-    {
-      name: 'place_of_birth',
-      type: 'text',
-      required: true,
-      label: 'Tempat Lahir',
-    },
-    {
-      name: 'birth_date',
-      type: 'date',
-      required: true,
-      label: 'Tanggal Lahir',
-    },
-    {
-      name: 'address',
-      type: 'textarea',
-      required: true,
-      label: 'Alamat Lengkap',
-    },
-    {
-      name: 'city',
-      type: 'text',
-      required: true,
-      label: 'Kota',
-    },
-    {
-      name: 'province',
-      type: 'text',
-      required: true,
-      label: 'Provinsi',
-    },
+    { name: 'place_of_birth', type: 'text', required: true, label: 'Tempat Lahir' },
+    { name: 'birth_date', type: 'date', required: true, label: 'Tanggal Lahir' },
+    { name: 'address', type: 'textarea', required: true, label: 'Alamat Lengkap' },
+    { name: 'city', type: 'text', required: true, label: 'Kota' },
+    { name: 'province', type: 'text', required: true, label: 'Provinsi' },
 
-    // --- PAKET YANG DIMINATI ---
+    // --- PAKET (samakan dengan UI: umrahpackage) ---
     {
-      name: 'umrah_package',
+      name: 'umrahpackage',
       type: 'relationship',
       relationTo: 'umrah-package',
       hasMany: false,
@@ -116,7 +68,7 @@ export const Hematumrahdaftar: CollectionConfig = {
       label: 'Paket Umrah yang Diminati',
     },
 
-    // --- TABUNGAN / CICILAN CUSTOM ---
+    // --- TABUNGAN / CICILAN CUSTOM (samakan dengan UI) ---
     {
       name: 'payment_type',
       type: 'select',
@@ -127,16 +79,14 @@ export const Hematumrahdaftar: CollectionConfig = {
       admin: { readOnly: true },
     },
     {
-      name: 'installment_amount',
+      name: 'installmentamount',
       type: 'number',
       required: true,
       label: 'Rencana Setoran (Rupiah)',
-      admin: {
-        description: 'Nominal yang akan disetor customer secara rutin',
-      },
+      admin: { description: 'Nominal yang akan disetor customer secara rutin' },
     },
     {
-      name: 'installment_frequency',
+      name: 'installmentfrequency',
       type: 'select',
       required: true,
       label: 'Frekuensi Setoran',
@@ -148,13 +98,11 @@ export const Hematumrahdaftar: CollectionConfig = {
       ],
     },
     {
-      name: 'installment_notes',
+      name: 'installmentnotes',
       type: 'textarea',
       required: false,
       label: 'Catatan Rencana Tabungan',
-      admin: {
-        description: 'Contoh: Saya akan setor setiap tanggal 25 setelah gajian',
-      },
+      admin: { description: 'Contoh: Saya akan setor setiap tanggal 25 setelah gajian' },
     },
 
     // --- LOG ---
@@ -172,7 +120,6 @@ export const Hematumrahdaftar: CollectionConfig = {
     beforeChange: [
       ({ data, operation }) => {
         if (operation === 'create' && !data.booking_id) {
-          // lebih aman pakai timestamp panjang agar minim bentrok
           const timestamp = Date.now().toString()
           data.booking_id = `HU-${timestamp}`
         }
@@ -181,4 +128,5 @@ export const Hematumrahdaftar: CollectionConfig = {
     ],
   },
 }
+
 
