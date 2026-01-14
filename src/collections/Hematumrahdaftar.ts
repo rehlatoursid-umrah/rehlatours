@@ -1,23 +1,30 @@
-import { CollectionConfig } from 'payload'
+import type { CollectionConfig } from 'payload'
 
 export const Hematumrahdaftar: CollectionConfig = {
-  slug: 'hemat-umrah-daftar', // Nama slug database (tabel)
+  slug: 'hemat-umrah-daftar',
   admin: {
     useAsTitle: 'name',
     defaultColumns: ['name', 'booking_id', 'status', 'installment_amount', 'createdAt'],
   },
+
+  // NOTE SECURITY:
+  // Untuk form publik: create & read boleh true.
+  // Update/delete sebaiknya dibatasi admin saja (kalau kamu belum punya auth, minimal false dulu).
   access: {
     read: () => true,
     create: () => true,
-    update: () => true,
-    delete: () => true,
+    update: ({ req }) => Boolean(req.user), // ganti sesuai role admin kamu kalau ada
+    delete: ({ req }) => Boolean(req.user), // ganti sesuai role admin kamu kalau ada
   },
+
   fields: [
+    // --- ID & STATUS ---
     {
       name: 'booking_id',
       type: 'text',
-      required: false, // Digenerate otomatis di hooks
+      required: false, // di-generate lewat hook
       label: 'ID Pemesanan',
+      admin: { readOnly: true },
     },
     {
       name: 'status',
@@ -27,12 +34,13 @@ export const Hematumrahdaftar: CollectionConfig = {
       defaultValue: 'pending_review',
       options: [
         { label: 'Menunggu Review', value: 'pending_review' },
-        { label: 'Aktif Menabung', value: 'active_saving' }, // Status khusus tabungan
+        { label: 'Aktif Menabung', value: 'active_saving' },
         { label: 'Lunas', value: 'completed' },
         { label: 'Dibatalkan', value: 'cancelled' },
       ],
     },
-    // --- DATA PRIBADI (Sama dengan form lama) ---
+
+    // --- DATA PRIBADI (minimal untuk UI baru) ---
     {
       name: 'name',
       type: 'text',
@@ -97,8 +105,8 @@ export const Hematumrahdaftar: CollectionConfig = {
       required: true,
       label: 'Provinsi',
     },
-    
-    // --- HUBUNGAN PAKET (Tetap ada biar tau dia mau paket apa) ---
+
+    // --- PAKET YANG DIMINATI ---
     {
       name: 'umrah_package',
       type: 'relationship',
@@ -108,19 +116,15 @@ export const Hematumrahdaftar: CollectionConfig = {
       label: 'Paket Umrah yang Diminati',
     },
 
-    // --- BAGIAN BARU: TABUNGAN / CICILAN CUSTOM ---
+    // --- TABUNGAN / CICILAN CUSTOM ---
     {
       name: 'payment_type',
       type: 'select',
       required: true,
       defaultValue: 'tabungan_custom',
       label: 'Tipe Pembayaran',
-      options: [
-        { label: 'Tabungan Umrah (Custom)', value: 'tabungan_custom' },
-      ],
-      admin: {
-        readOnly: true, // Biar admin tau ini pasti tabungan
-      }
+      options: [{ label: 'Tabungan Umrah (Custom)', value: 'tabungan_custom' }],
+      admin: { readOnly: true },
     },
     {
       name: 'installment_amount',
@@ -129,7 +133,7 @@ export const Hematumrahdaftar: CollectionConfig = {
       label: 'Rencana Setoran (Rupiah)',
       admin: {
         description: 'Nominal yang akan disetor customer secara rutin',
-      }
+      },
     },
     {
       name: 'installment_frequency',
@@ -150,28 +154,31 @@ export const Hematumrahdaftar: CollectionConfig = {
       label: 'Catatan Rencana Tabungan',
       admin: {
         description: 'Contoh: Saya akan setor setiap tanggal 25 setelah gajian',
-      }
+      },
     },
 
-    // --- LOG DATA (Timestamp) ---
+    // --- LOG ---
     {
       name: 'submission_date',
       type: 'date',
       required: false,
       label: 'Tanggal Submit',
       defaultValue: () => new Date().toISOString(),
+      admin: { readOnly: true },
     },
   ],
+
   hooks: {
     beforeChange: [
       ({ data, operation }) => {
-        // Generate booking ID khusus Hemat Umrah (Kode HU-)
         if (operation === 'create' && !data.booking_id) {
-          const timestamp = Date.now().toString().slice(-5)
-          data.booking_id = `HU-${timestamp}` // HU = Hemat Umrah
+          // lebih aman pakai timestamp panjang agar minim bentrok
+          const timestamp = Date.now().toString()
+          data.booking_id = `HU-${timestamp}`
         }
         return data
       },
     ],
   },
 }
+
