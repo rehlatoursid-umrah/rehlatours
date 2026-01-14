@@ -271,13 +271,17 @@ export const UmrahFormMinimal: CollectionConfig = {
         return data
       },
   
-      afterChange: [
-      async ({ doc, operation, req }) => {
-        if (operation === 'create') {
-          console.log(`New Umrah form minimal submitted: ${doc.booking_id} by ${doc.name}`)
-        } else if (operation === 'update') {
-          console.log(`Umrah form minimal updated: ${doc.booking_id} by ${doc.name}`)
-        }
+      hooks: {
+  afterChange: [
+    async ({ doc, req, operation }) => {
+      if (operation === 'create') {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://umrah.rehlatours.id'
+        await fetch(`${baseUrl}/api/send-file`, ...)
+      }
+    }
+  ]
+}
+
 
         // Send WhatsApp notification with PDF confirmation for both create and update
         try {
