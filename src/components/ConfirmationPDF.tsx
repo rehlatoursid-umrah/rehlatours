@@ -247,7 +247,7 @@ export default function ConfirmationPDF({ formData, bookingId }: ConfirmationPDF
       <Page size="A4" style={styles.page}>
         <View style={styles.header}>
           <Text style={styles.title}>KONFIRMASI PEMESANAN</Text>
-          <Text style={styles.subtitle}>Rehla Tours & Travel</Text>
+          <Text style={styles.subtitle}>Rehla Indonesia Tours & Travel | www.rehlatours.id </Text>
         </View>
 
         <View style={styles.content}>
@@ -508,10 +508,10 @@ export default function ConfirmationPDF({ formData, bookingId }: ConfirmationPDF
                 fontSize: 10,
               }}
             >
-              Terima kasih telah mempercayakan perjalanan Anda kepada Rehla Tours & Travel
+              Terima kasih telah mempercayakan perjalanan Anda kepada Rehla Indonesia Tours & Travel
             </Text>
             <Text style={{ marginBottom: 4, fontSize: 9 }}>
-              Untuk informasi lebih lanjut, hubungi kami di +62 896-8502-8129
+              Untuk informasi lebih lanjut, hubungi kami di +62 831-9732-1658
             </Text>
             <Text style={{ marginTop: 6, fontSize: 8, color: '#6B7280' }}>
               Dokumen ini dihasilkan otomatis pada{' '}
