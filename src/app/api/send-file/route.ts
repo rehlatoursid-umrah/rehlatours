@@ -10,7 +10,9 @@ import { promises as fsp } from 'fs'
 import fs from 'fs'
 
 export const runtime = 'nodejs'
-export const maxDuration = 60
+export const maxDuration = 60 // Max duration 60 detik (Vercel Hobby/Pro)
+
+// --- Helper Types & Functions (Sama seperti sebelumnya) ---
 
 interface LegacyBookingData {
   bookingId: string
@@ -68,35 +70,34 @@ function safeJsonParse<T>(value: string, label: string): { ok: true; data: T } |
   }
 }
 
+// --- MAIN HANDLER ---
+
 export async function POST(request: NextRequest) {
   const start = Date.now()
   let filePath: string | null = null
 
   try {
+    // 1. Parse Request
     const formData = await request.formData()
-
     const phone = (formData.get('phone') as string | null)?.trim() || ''
     const bookingIdInput = (formData.get('bookingId') as string | null)?.trim()
     const bookingDataJson = (formData.get('bookingData') as string | null)?.trim()
     const umrahFormDataJson = (formData.get('umrahFormData') as string | null)?.trim()
+    const caption = ((formData.get('caption') as string | null) ?? '') || 'Konfirmasi Pendaftaran Umrah'
 
-    const caption =
-      ((formData.get('caption') as string | null) ?? '') ||
-      'Terima kasih atas pendaftaran Anda. Berikut adalah konfirmasi pendaftaran Anda.'
-
+    // 2. Validate Phone
     if (!phone) {
       return NextResponse.json({ success: false, error: 'Phone number is required' }, { status: 400 })
     }
 
+    // 3. Get WhatsApp Config
     const whatsappEndpoint = process.env.WHATSAPP_API_ENDPOINT
-
     if (!whatsappEndpoint) {
-      return NextResponse.json(
-        { success: false, error: 'WhatsApp API endpoint not configured' },
-        { status: 500 },
-      )
+      console.error('❌ WHATSAPP_API_ENDPOINT is missing')
+      return NextResponse.json({ success: false, error: 'Server configuration error' }, { status: 500 })
     }
 
+    // 4. Parse Data & Generate ID
     let umrahFormData: UmrahFormData
     let bookingId: string = bookingIdInput || `RT-${Date.now()}`
 
@@ -111,129 +112,93 @@ export async function POST(request: NextRequest) {
       umrahFormData = convertLegacyToUmrahData(legacy)
       bookingId = legacy.bookingId || bookingId
     } else {
-      return NextResponse.json(
-        { success: false, error: 'Either umrahFormData or bookingData is required' },
-        { status: 400 },
-      )
+      return NextResponse.json({ success: false, error: 'Data missing' }, { status: 400 })
     }
 
-    console.log('📄 Generating PDF for booking:', bookingId)
+    // 5. Generate PDF
+    console.log(`📄 Generating PDF for ${bookingId}...`)
     const pdfDocument = createElement(ConfirmationPDF, { formData: umrahFormData, bookingId })
     const pdfBuffer = await renderToBuffer(pdfDocument as any)
-
-    const pdfSizeKB = (pdfBuffer.byteLength / 1024).toFixed(2)
-    console.log(`📊 PDF size: ${pdfSizeKB} KB`)
-
+    
+    // Save to temp
     const tempDir = '/tmp'
     await fsp.mkdir(tempDir, { recursive: true })
-
-    const fileName = `confirmation-${bookingId}-${Date.now()}.pdf`
+    const fileName = `confirmation-${bookingId}.pdf`
     filePath = path.join(tempDir, fileName)
-
     await fsp.writeFile(filePath, pdfBuffer as any)
-    console.log('✅ PDF saved to:', filePath)
+    console.log(`✅ PDF Saved: ${filePath} (${(pdfBuffer.byteLength / 1024).toFixed(2)} KB)`)
 
-    // Format phone: tambah @s.whatsapp.net
-    let formattedPhone = phone
-    if (!phone.includes('@')) {
-      formattedPhone = `${phone}@s.whatsapp.net`
-    }
+    // 6. Prepare WhatsApp Request
+    // Format: 628xxx@s.whatsapp.net
+    let formattedPhone = phone.replace(/\D/g, '')
+    if (formattedPhone.startsWith('0')) formattedPhone = '62' + formattedPhone.slice(1)
+    if (!formattedPhone.includes('@')) formattedPhone += '@s.whatsapp.net'
 
-    console.log('📱 Phone formatted:', phone, '→', formattedPhone)
-
-    // ✅ Build FormData PERSIS seperti SendFile.js
+    // Build FormData (MATCHING DASHBOARD VUE.JS CODE)
     const whatsappForm = new FormData()
     whatsappForm.append('caption', caption)
     whatsappForm.append('phone', formattedPhone)
-    whatsappForm.append('is_forwarded', 'false')  // ✅ Sesuai dengan code asli
+    whatsappForm.append('is_forwarded', 'false') // Penting! String 'false'
     whatsappForm.append('file', fs.createReadStream(filePath), {
       filename: fileName,
       contentType: 'application/pdf',
     })
 
+    // URL: /send/file
     const url = `${whatsappEndpoint.replace(/\/$/, '')}/send/file`
-    console.log('🔄 Sending to WhatsApp API:', url)
-    console.log('📤 Request data:', {
-      phone: formattedPhone,
-      caption: caption.substring(0, 50) + '...',
-      fileName: fileName,
-    })
+    
+    console.log(`🚀 Sending to WA API: ${url}`)
+    console.log(`   Phone: ${formattedPhone}`)
 
-    // ✅ TANPA AUTH - persis seperti window.http.post di dashboard
+    // 7. Send Request (NO AUTH - Sesuai Dashboard)
     const whatsappResponse = await axios.post(url, whatsappForm, {
       headers: {
         ...whatsappForm.getHeaders(),
+        // Jangan tambah Authorization header jika dashboard tidak pakai
       },
-      // TIDAK ADA AUTH!
-      timeout: 45000,
-      maxContentLength: 50 * 1024 * 1024,
-      maxBodyLength: 50 * 1024 * 1024,
-      validateStatus: () => true,
+      timeout: 45000, // 45s timeout
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity,
+      validateStatus: () => true // Jangan throw error dulu
     })
 
     const tookMs = Date.now() - start
+    console.log(`📥 WA Response (${whatsappResponse.status}):`, JSON.stringify(whatsappResponse.data).substring(0, 200))
 
-    console.log('📥 Response status:', whatsappResponse.status)
-    console.log('📥 Response data:', JSON.stringify(whatsappResponse.data))
-
-    if (whatsappResponse.status < 200 || whatsappResponse.status >= 300) {
-      console.error('❌ WhatsApp API error:', {
-        status: whatsappResponse.status,
+    // Handle Response
+    if (whatsappResponse.status >= 200 && whatsappResponse.status < 300) {
+       return NextResponse.json({
+        success: true,
+        message: 'PDF sent successfully',
         data: whatsappResponse.data,
+        tookMs
       })
-      
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Failed to send WhatsApp message',
-          status: whatsappResponse.status,
-          details: whatsappResponse.data,
-          tookMs,
-        },
-        { status: 502 },
-      )
+    } else {
+      // Jika 401, berarti memang butuh Auth (tapi dashboard mungkin pakai cookie session)
+      // Kita return error tapi dengan detail
+      console.error('❌ WA Send Failed:', whatsappResponse.data)
+      return NextResponse.json({
+        success: false,
+        error: 'WhatsApp API Failed',
+        status: whatsappResponse.status,
+        details: whatsappResponse.data,
+        tookMs
+      }, { status: 502 })
     }
 
-    console.log('✅ WhatsApp message sent successfully!')
-
-    return NextResponse.json({
-      success: true,
-      message: 'PDF confirmation sent successfully',
-      bookingId,
-      phone: formattedPhone,
-      pdfSizeKB: parseFloat(pdfSizeKB),
-      tookMs,
-      timestamp: new Date().toISOString(),
-      whatsappResponse: whatsappResponse.data,
-    })
   } catch (error: any) {
-    console.error('❌ Fatal error:', error)
-    const message = error instanceof Error ? error.message : 'Internal server error'
-    return NextResponse.json({ success: false, error: message, stack: error.stack }, { status: 500 })
+    console.error('❌ Fatal API Error:', error)
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 })
   } finally {
+    // Cleanup
     if (filePath) {
-      try {
-        await fsp.unlink(filePath)
-        console.log('🗑️ Temp file deleted')
-      } catch {}
+      try { await fsp.unlink(filePath) } catch {}
     }
   }
 }
 
 export async function GET() {
-  return NextResponse.json({
-    message: 'Send PDF Confirmation API',
-    version: '2.0',
-    usage: {
-      method: 'POST',
-      endpoint: '/api/send-file',
-      body: {
-        phone: '628xxx (will be formatted to 628xxx@s.whatsapp.net)',
-        umrahFormData: 'JSON string of UmrahFormData',
-        bookingId: 'string',
-        caption: 'string (optional)',
-      },
-    },
-  })
+  return NextResponse.json({ status: 'ready', endpoint: '/api/send-file' })
 }
+
 
