@@ -117,7 +117,6 @@ function validateHematForm(formData: any): { success: boolean; errors?: string[]
  */
 function buildCleanDataHemat(formData: any) {
   return {
-    // booking_id di-generate via hook collection
     name: safeString(formData.name),
     email: safeString(formData.email),
     phone_number: safeString(formData.phone_number),
@@ -129,18 +128,18 @@ function buildCleanDataHemat(formData: any) {
     city: safeString(formData.city),
     province: safeString(formData.province),
 
-    // relationship -> ID paket
-    umrah_package: safeString(formData.umrah_package),
-
+    
+    umrahpackage: safeString(formData.umrah_package),
     payment_type: 'tabungan_custom',
-    installment_amount: safeNumber(formData.installment_amount),
-    installment_frequency: safeString(formData.installment_frequency) || 'flexible',
-    installment_notes: safeString(formData.installment_notes),
+    installmentamount: safeNumber(formData.installment_amount),
+    installmentfrequency: safeString(formData.installment_frequency) || 'flexible',
+    installmentnotes: safeString(formData.installment_notes),
 
     submission_date: new Date().toISOString(),
     status: 'pending_review',
   }
 }
+
 
 export async function getUmrahPackageOptions() {
   try {
