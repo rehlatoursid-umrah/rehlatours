@@ -12,10 +12,6 @@ import ConfirmationPDF from '@/components/ConfirmationPDF'
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
-/**
- * Bentuk data yang dikirim dari services.ts (hemat) itu: umrahFormData (JSON string)
- * Kita buat type longgar supaya kompatibel dengan form lama & baru.
- */
 type AnyFormData = Record<string, any>
 
 interface LegacyBookingData {
@@ -47,43 +43,60 @@ function formatPhoneForWhatsAppJid(phone: string): string {
   return formattedPhone
 }
 
-/**
- * Normalisasi supaya ConfirmationPDF minimal tidak error walau field hemat lebih sedikit.
- * (Komponen PDF kamu tetap yang lama, jadi ini antisipasi null/undefined.)
- */
+// === Normalisasi khusus Hemat Umrah ===
 function normalizeForPdf(input: AnyFormData): AnyFormData {
   const data = input || {}
+
   return {
     ...data,
 
-    // pastikan string fields minimal ada
+    // identitas & kontak
     name: data.name ?? data.customerName ?? '',
     email: data.email ?? '',
-    whatsapp_number: data.whatsapp_number ?? data.whatsappNumber ?? '',
     phone_number: data.phone_number ?? data.phoneNumber ?? '',
+    whatsapp_number: data.whatsapp_number ?? data.whatsappNumber ?? '',
 
-    // paket: di hemat biasanya ID, di legacy biasanya nama
-    umrah_package: data.umrah_package ?? data.packageName ?? '',
+    // alamat
+    address: data.address ?? '',
+    city: data.city ?? '',
+    province: data.province ?? '',
 
-    // hemat fields (biarkan ada kalau PDF mau tampilkan)
+    // paket: schema hemat pakai umrahpackage
+    umrahpackage:
+      data.umrahpackage ??
+      data.umrah_package ??
+      data.packageName ??
+      '',
+
+    // pembayaran & tabungan: schema hemat
     payment_type: data.payment_type ?? 'tabungan_custom',
-    installment_amount: data.installment_amount ?? null,
-    installment_frequency: data.installment_frequency ?? 'flexible',
-    installment_notes: data.installment_notes ?? '',
+    installmentamount:
+      data.installmentamount ??
+      data.installment_amount ??
+      '',
+    installmentfrequency:
+      data.installmentfrequency ??
+      data.installment_frequency ??
+      '',
+    installmentnotes:
+      data.installmentnotes ??
+      data.installment_notes ??
+      '',
+
+    submission_date:
+      data.submission_date ??
+      data.register_date ??
+      '',
   }
 }
 
-/**
- * Fallback lama: legacy bookingData -> bentuk object generic
- * (dulu kamu convert ke UmrahFormData, tapi untuk hemat kita bikin longgar saja)
- */
 function convertLegacyToGeneric(legacyData: LegacyBookingData): AnyFormData {
   return {
     name: legacyData.customerName || '',
     email: legacyData.email || '',
     whatsapp_number: legacyData.whatsappNumber || '',
     phone_number: legacyData.phoneNumber || '',
-    umrah_package: legacyData.packageName || '',
+    umrahpackage: legacyData.packageName || '',
     payment_method: legacyData.paymentMethod || '',
     terms_of_service: true,
   }
@@ -94,15 +107,11 @@ export async function POST(request: NextRequest) {
   let filePath: string | null = null
 
   try {
-    // 1) Parse Request FormData
     const formData = await request.formData()
     const phone = (formData.get('phone') as string | null)?.trim() || ''
     const bookingIdInput = (formData.get('bookingId') as string | null)?.trim()
 
-    // IMPORTANT: services.ts hemat mengirim "umrahFormData"
     const umrahFormDataJson = (formData.get('umrahFormData') as string | null)?.trim()
-
-    // fallback lama (kalau ada request legacy)
     const bookingDataJson = (formData.get('bookingData') as string | null)?.trim()
 
     const caption =
@@ -112,7 +121,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Phone number is required' }, { status: 400 })
     }
 
-    // 2) WhatsApp Config
     const whatsappEndpoint = process.env.WHATSAPP_API_ENDPOINT
     const whatsappUsername = process.env.WHATSAPP_API_USERNAME
     const whatsappPassword = process.env.WHATSAPP_API_PASSWORD
@@ -126,7 +134,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Server configuration error' }, { status: 500 })
     }
 
-    // 3) Parse Data -> generic object
     let parsedData: AnyFormData
     let bookingId: string = bookingIdInput || `HU-${Date.now()}`
 
@@ -145,8 +152,9 @@ export async function POST(request: NextRequest) {
 
     const pdfData = normalizeForPdf(parsedData)
 
-    // 4) Generate PDF
-    console.log(`📄 Generating PDF for ${bookingId}...`)
+    // Optional: debug
+    // console.log('PDF DATA >>>', JSON.stringify(pdfData, null, 2))
+
     const pdfDocument = createElement(ConfirmationPDF as any, { formData: pdfData, bookingId })
     const pdfBuffer = await renderToBuffer(pdfDocument as any)
 
@@ -161,13 +169,11 @@ export async function POST(request: NextRequest) {
     const sizeKB = (pdfBuffer.byteLength / 1024).toFixed(2)
     console.log(`✅ PDF Saved: ${fileName} (${sizeKB} KB)`)
 
-    // 5) Format phone -> WA JID
     const formattedPhone = formatPhoneForWhatsAppJid(phone)
     if (!formattedPhone) {
       return NextResponse.json({ success: false, error: 'Invalid phone number' }, { status: 400 })
     }
 
-    // 6) Build FormData for WhatsApp API
     const whatsappForm = new FormData()
     whatsappForm.append('caption', caption)
     whatsappForm.append('phone', formattedPhone)
@@ -183,7 +189,6 @@ export async function POST(request: NextRequest) {
     console.log(`📱 Phone: ${formattedPhone}`)
     console.log(`🔐 Auth: ${whatsappUsername}:${'*'.repeat(whatsappPassword.length)}`)
 
-    // 7) Send with Basic Auth
     const whatsappResponse = await axios.post(url, whatsappForm, {
       headers: { ...whatsappForm.getHeaders() },
       auth: { username: whatsappUsername, password: whatsappPassword },
@@ -247,4 +252,3 @@ export async function GET() {
     version: '2.0-hemat',
   })
 }
-
