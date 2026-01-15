@@ -1,8 +1,5 @@
 import { Page, Text, View, Document, StyleSheet, Font, Image } from '@react-pdf/renderer'
 
-// NOTE:
-// Untuk Umrah Hemat, struktur formData beda dari UmrahFormData lama.
-// Biar fleksibel & tidak error waktu field tidak ada, pakai type longgar.
 type HematFormData = Record<string, any>
 
 try {
@@ -172,67 +169,65 @@ interface ConfirmationPDFProps {
   bookingId: string
 }
 
-const safeGet = (obj: any, key: string, defaultValue: any = '-'): any => {
-  if (!obj || typeof obj !== 'object') return defaultValue
-  const v = obj[key]
-  return v !== undefined && v !== null && v !== '' ? v : defaultValue
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+
+const hasValue = (v: any): boolean => {
+  if (v === null || v === undefined || v === '') return false
+  if (typeof v === 'string') return v.trim() !== ''
+  return true
 }
 
-const formatDate = (dateString: string): string => {
-  try {
-    if (!dateString || dateString === '-') return '-'
-    const date = new Date(dateString)
-    if (isNaN(date.getTime())) return dateString
-    return date.toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })
-  } catch {
-    return dateString || '-'
-  }
+const safeGet = (obj: any, key: string, defaultValue: any = ''): any => {
+  if (!obj || typeof obj !== 'object') return defaultValue
+  const v = obj[key]
+  return hasValue(v) ? v : defaultValue
 }
 
 const formatValue = (value: any): string => {
-  if (value === null || value === undefined || value === '') return '-'
+  if (!hasValue(value)) return ''
   if (typeof value === 'boolean') return value ? 'Ya' : 'Tidak'
   if (typeof value === 'string') return value
   return String(value)
 }
 
+const formatDate = (dateString: string): string => {
+  try {
+    if (!hasValue(dateString)) return ''
+    const date = new Date(dateString)
+    if (isNaN(date.getTime())) return String(dateString)
+    return date.toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })
+  } catch {
+    return hasValue(dateString) ? String(dateString) : ''
+  }
+}
+
 const getGenderLabel = (gender: string): string => {
-  if (!gender || gender === '-') return '-'
+  if (!hasValue(gender)) return ''
   return gender === 'male' ? 'Laki-laki' : gender === 'female' ? 'Perempuan' : gender
 }
 
-const getRelationshipLabel = (relationship: string): string => {
-  if (!relationship || relationship === '-') return '-'
-  const labels: Record<string, string> = {
-    parents: 'Orang Tua',
-    spouse: 'Suami/Istri',
-    children: 'Anak',
-    sibling: 'Saudara',
-    relative: 'Kerabat',
-  }
-  return labels[relationship] || relationship
-}
-
-const getMaritalStatusLabel = (status: string): string => {
-  if (!status || status === '-') return '-'
-  const labels: Record<string, string> = {
-    single: 'Belum Menikah',
-    married: 'Menikah',
-    divorced: 'Cerai',
-  }
-  return labels[status] || status
-}
-
-// Umrah Hemat payment labels
 const getPaymentTypeLabel = (paymentType: string): string => {
-  if (!paymentType || paymentType === '-') return '-'
+  if (!hasValue(paymentType)) return ''
   const labels: Record<string, string> = {
+    tabungan_custom: 'Tabungan Umrah (Custom)',
     lunas: 'Lunas',
     dp: 'DP (Down Payment)',
     cicilan: 'Cicilan',
-    tabungan_custom: 'Tabungan Umrah (Custom)',
   }
   return labels[paymentType] || paymentType
+}
+
+const getFrequencyLabel = (freq: string): string => {
+  if (!hasValue(freq)) return ''
+  const labels: Record<string, string> = {
+    daily: 'Harian',
+    weekly: 'Mingguan',
+    monthly: 'Bulanan',
+    flexible: 'Fleksibel',
+  }
+  return labels[freq] || freq
 }
 
 const formatRupiah = (value: any): string => {
@@ -243,270 +238,208 @@ const formatRupiah = (value: any): string => {
         ? Number(String(value).replace(/[^\d.-]/g, ''))
         : NaN
 
-  if (!isFinite(n)) return '-'
-  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n)
+  if (!isFinite(n)) return ''
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    maximumFractionDigits: 0,
+  }).format(n)
 }
 
-const getFrequencyLabel = (freq: string): string => {
-  if (!freq || freq === '-') return '-'
-  const labels: Record<string, string> = {
-    weekly: 'Mingguan',
-    monthly: 'Bulanan',
-    flexible: 'Fleksibel',
-  }
-  return labels[freq] || freq
+// ============================================
+// SAFEROW COMPONENT (Render only if value exists)
+// ============================================
+
+interface SafeRowProps {
+  label: string
+  value: any
+  isLast?: boolean
+  isCurrency?: boolean
 }
+
+const SafeRow = ({ label, value, isLast = false, isCurrency = false }: SafeRowProps) => {
+  if (!hasValue(value)) return null
+
+  const displayValue = isCurrency ? formatRupiah(value) : formatValue(value)
+
+  return (
+    <View style={[styles.row, isLast && styles.lastRow]}>
+      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.value}>{displayValue}</Text>
+    </View>
+  )
+}
+
+// ============================================
+// MAIN CONFIRMATIONPDF COMPONENT
+// ============================================
 
 export default function ConfirmationPDF({ formData, bookingId }: ConfirmationPDFProps) {
   const safeFormData = formData || {}
   const safeBookingId = bookingId || `HU-${Date.now()}`
 
-  // Untuk PDF di server, aman pakai URL absolut (kamu sudah pakai github raw)
   const logoSrc =
     'https://raw.githubusercontent.com/rehlatoursid-umrah/rehlatours/refs/heads/main/public/rehla.png'
 
-  // Ambil paket: kadang id, kadang nama
-  const packageName =
-    safeGet(safeFormData, 'umrah_package', '-') !== '-'
-      ? safeGet(safeFormData, 'umrah_package', '-')
-      : safeGet(safeFormData, 'package_name', '-')
+  // ============================================
+  // EXTRACT DATA SESUAI SCHEMA HematUmrahdaftar
+  // ============================================
 
-  // Payment khusus hemat
-  const paymentType = safeGet(safeFormData, 'payment_type', safeGet(safeFormData, 'payment_method', '-'))
-  const installmentAmount = safeGet(safeFormData, 'installment_amount', '-')
-  const installmentFrequency = safeGet(safeFormData, 'installment_frequency', '-')
-  const installmentNotes = safeGet(safeFormData, 'installment_notes', '-')
+  // Informasi Pribadi
+  const name = safeGet(safeFormData, 'name', '')
+  const gender = safeGet(safeFormData, 'gender', '')
+  const placeOfBirth = safeGet(safeFormData, 'place_of_birth', '')
+  const birthDate = safeGet(safeFormData, 'birth_date', '')
 
-  const showInstallmentBox =
-    paymentType !== '-' &&
-    (String(paymentType) === 'cicilan' ||
-      String(paymentType) === 'tabungan_custom' ||
-      installmentAmount !== '-' ||
-      installmentNotes !== '-')
+  // Informasi Kontak
+  const email = safeGet(safeFormData, 'email', '')
+  const phoneNumber = safeGet(safeFormData, 'phone_number', '')
+  const whatsappNumber = safeGet(safeFormData, 'whatsapp_number', '')
+
+  // Informasi Alamat
+  const address = safeGet(safeFormData, 'address', '')
+  const city = safeGet(safeFormData, 'city', '')
+  const province = safeGet(safeFormData, 'province', '')
+
+  // Paket & Tabungan
+  const umrahPackage = safeGet(safeFormData, 'umrahpackage', '')
+  const paymentType = safeGet(safeFormData, 'payment_type', 'tabungan_custom')
+  const installmentAmount = safeGet(safeFormData, 'installmentamount', '')
+  const installmentFrequency = safeGet(safeFormData, 'installmentfrequency', '')
+  const installmentNotes = safeGet(safeFormData, 'installmentnotes', '')
+  const submissionDate = safeGet(safeFormData, 'submission_date', '')
 
   return (
     <Document>
       <Page size="A4" style={styles.page}>
+        {/* ============================================
+            HEADER
+            ============================================ */}
         <View style={styles.header}>
           <Image style={styles.logo} src={logoSrc} />
           <View style={styles.headerTextContainer}>
             <Text style={styles.title}>KONFIRMASI PENDAFTARAN</Text>
             <Text style={styles.subtitle}>Rehla Indonesia Tours & Travel</Text>
-            <Text style={[styles.subtitle, { fontSize: 10, marginTop: 2, opacity: 0.9 }]}>hematumrah.rehlatours.id</Text>
+            <Text style={[styles.subtitle, { fontSize: 10, marginTop: 2, opacity: 0.9 }]}>
+              hematumrah.rehlatours.id
+            </Text>
           </View>
         </View>
 
         <View style={styles.content}>
           <Text style={styles.bookingId}>ID Pendaftaran: {safeBookingId}</Text>
 
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Informasi Pribadi</Text>
-            </View>
-
-            <View style={styles.row}>
-              <Text style={styles.label}>Nama Lengkap</Text>
-              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'name'))}</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.label}>Jenis Kelamin</Text>
-              <Text style={styles.value}>{getGenderLabel(safeGet(safeFormData, 'gender'))}</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.label}>Tempat Lahir</Text>
-              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'place_of_birth'))}</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.label}>Tanggal Lahir</Text>
-              <Text style={styles.value}>{formatDate(safeGet(safeFormData, 'birth_date'))}</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.label}>Nama Ayah</Text>
-              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'father_name'))}</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.label}>Nama Ibu</Text>
-              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'mother_name'))}</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.label}>Status Pernikahan</Text>
-              <Text style={styles.value}>{getMaritalStatusLabel(safeGet(safeFormData, 'mariage_status'))}</Text>
-            </View>
-            <View style={[styles.row, styles.lastRow]}>
-              <Text style={styles.label}>Pekerjaan</Text>
-              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'occupation'))}</Text>
-            </View>
-          </View>
-
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Informasi Kontak</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.label}>Email</Text>
-              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'email'))}</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.label}>No. Telepon</Text>
-              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'phone_number'))}</Text>
-            </View>
-            <View style={[styles.row, styles.lastRow]}>
-              <Text style={styles.label}>WhatsApp</Text>
-              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'whatsapp_number'))}</Text>
-            </View>
-          </View>
-
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Informasi Alamat</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.label}>Alamat</Text>
-              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'address'))}</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.label}>Kota</Text>
-              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'city'))}</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.label}>Provinsi</Text>
-              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'province'))}</Text>
-            </View>
-            <View style={[styles.row, styles.lastRow]}>
-              <Text style={styles.label}>Kode Pos</Text>
-              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'postal_code'))}</Text>
-            </View>
-          </View>
-
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Informasi Dokumen</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.label}>NIK</Text>
-              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'nik_number'))}</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.label}>No. Paspor</Text>
-              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'passport_number'))}</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.label}>Tanggal Terbit</Text>
-              <Text style={styles.value}>{formatDate(safeGet(safeFormData, 'date_of_issue'))}</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.label}>Tanggal Berakhir</Text>
-              <Text style={styles.value}>{formatDate(safeGet(safeFormData, 'expiry_date'))}</Text>
-            </View>
-            <View style={[styles.row, styles.lastRow]}>
-              <Text style={styles.label}>Tempat Terbit</Text>
-              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'place_of_issue'))}</Text>
-            </View>
-          </View>
-
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Informasi Kesehatan</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.label}>Penyakit Khusus</Text>
-              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'specific_disease'))}</Text>
-            </View>
-
-            {safeGet(safeFormData, 'specific_disease') === true && safeGet(safeFormData, 'illness') !== '-' && (
-              <View style={styles.row}>
-                <Text style={styles.label}>Detail Penyakit</Text>
-                <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'illness'))}</Text>
+          {/* ============================================
+              INFORMASI PRIBADI
+              ============================================ */}
+          {(hasValue(name) ||
+            hasValue(gender) ||
+            hasValue(placeOfBirth) ||
+            hasValue(birthDate)) && (
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardTitle}>Informasi Pribadi</Text>
               </View>
-            )}
 
-            <View style={styles.row}>
-              <Text style={styles.label}>Kebutuhan Khusus</Text>
-              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'special_needs'))}</Text>
+              <SafeRow label="Nama Lengkap" value={name} />
+              <SafeRow label="Jenis Kelamin" value={getGenderLabel(gender)} />
+              <SafeRow label="Tempat Lahir" value={placeOfBirth} />
+              <SafeRow label="Tanggal Lahir" value={formatDate(birthDate)} isLast />
             </View>
-            <View style={[styles.row, styles.lastRow]}>
-              <Text style={styles.label}>Kursi Roda</Text>
-              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'wheelchair'))}</Text>
-            </View>
-          </View>
+          )}
 
+          {/* ============================================
+              INFORMASI KONTAK
+              ============================================ */}
+          {(hasValue(email) || hasValue(phoneNumber) || hasValue(whatsappNumber)) && (
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardTitle}>Informasi Kontak</Text>
+              </View>
+
+              <SafeRow label="Email" value={email} />
+              <SafeRow label="No. Telepon" value={phoneNumber} />
+              <SafeRow label="WhatsApp" value={whatsappNumber} isLast />
+            </View>
+          )}
+
+          {/* ============================================
+              INFORMASI ALAMAT
+              ============================================ */}
+          {(hasValue(address) || hasValue(city) || hasValue(province)) && (
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardTitle}>Informasi Alamat</Text>
+              </View>
+
+              <SafeRow label="Alamat Lengkap" value={address} />
+              <SafeRow label="Kota" value={city} />
+              <SafeRow label="Provinsi" value={province} isLast />
+            </View>
+          )}
+
+          {/* ============================================
+              INFORMASI PROGRAM TABUNGAN UMRAH
+              ============================================ */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Kontak Darurat</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.label}>Nama</Text>
-              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'emergency_contact_name'))}</Text>
-            </View>
-            <View style={styles.row}>
-              <Text style={styles.label}>Hubungan</Text>
-              <Text style={styles.value}>{getRelationshipLabel(safeGet(safeFormData, 'relationship'))}</Text>
-            </View>
-            <View style={[styles.row, styles.lastRow]}>
-              <Text style={styles.label}>No. Telepon</Text>
-              <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'emergency_contact_phone'))}</Text>
-            </View>
-          </View>
-
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Informasi Paket & Pembayaran</Text>
+              <Text style={styles.cardTitle}>Informasi Program Tabungan Umrah</Text>
             </View>
 
-            <View style={styles.row}>
-              <Text style={styles.label}>Paket Umrah</Text>
-              <Text style={styles.value}>{formatValue(packageName)}</Text>
-            </View>
+            <SafeRow label="Paket Umrah" value={umrahPackage} />
+            <SafeRow label="Metode Pembayaran" value={getPaymentTypeLabel(paymentType)} />
 
-            <View style={styles.row}>
-              <Text style={styles.label}>Jenis Pembayaran</Text>
-              <Text style={styles.value}>{getPaymentTypeLabel(formatValue(paymentType))}</Text>
-            </View>
-
-            {showInstallmentBox ? (
+            {(hasValue(installmentAmount) ||
+              hasValue(installmentFrequency) ||
+              hasValue(installmentNotes)) && (
               <>
-                <View style={styles.row}>
-                  <Text style={styles.label}>Nominal Setoran/Cicilan</Text>
-                  <Text style={styles.value}>{installmentAmount !== '-' ? formatRupiah(installmentAmount) : '-'}</Text>
-                </View>
-                <View style={styles.row}>
-                  <Text style={styles.label}>Frekuensi Setoran</Text>
-                  <Text style={styles.value}>{getFrequencyLabel(formatValue(installmentFrequency))}</Text>
-                </View>
-                <View style={[styles.row, styles.lastRow]}>
-                  <Text style={styles.label}>Catatan Pembayaran</Text>
-                  <Text style={styles.value}>{formatValue(installmentNotes)}</Text>
-                </View>
-              </>
-            ) : (
-              <>
-                <View style={styles.row}>
-                  <Text style={styles.label}>Pernah Umrah</Text>
-                  <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'has_performed_umrah'))}</Text>
-                </View>
-                <View style={[styles.row, styles.lastRow]}>
-                  <Text style={styles.label}>Pernah Haji</Text>
-                  <Text style={styles.value}>{formatValue(safeGet(safeFormData, 'has_performed_hajj'))}</Text>
-                </View>
+                <SafeRow
+                  label="Nominal Setoran Rutin"
+                  value={installmentAmount}
+                  isCurrency
+                />
+                <SafeRow
+                  label="Frekuensi Setoran"
+                  value={getFrequencyLabel(installmentFrequency)}
+                />
+                <SafeRow label="Catatan Rencana Tabungan" value={installmentNotes} />
               </>
             )}
+
+            <SafeRow label="Tanggal Pendaftaran" value={formatDate(submissionDate)} isLast />
           </View>
 
+          {/* ============================================
+              CATATAN PENTING
+              ============================================ */}
           <View style={styles.noteBox}>
             <Text style={styles.noteTitle}>INFORMASI PENTING</Text>
             <Text style={styles.noteText}>
-              Mohon simpan dokumen ini sebagai bukti pendaftaran Anda. Tim kami akan menghubungi Anda melalui WhatsApp
-              atau email untuk konfirmasi lebih lanjut terkait jadwal, setoran, dan dokumen yang diperlukan.
+              Mohon simpan dokumen ini sebagai bukti pendaftaran program tabungan umrah Anda.
+              Tim kami akan segera menghubungi Anda melalui WhatsApp atau email untuk konfirmasi
+              lebih lanjut mengenai jadwal setoran, paket pilihan, dan dokumen yang diperlukan.
             </Text>
           </View>
 
           <View style={styles.divider} />
 
+          {/* ============================================
+              FOOTER
+              ============================================ */}
           <View style={styles.footer}>
-            <Text style={{ fontFamily: 'Helvetica-Bold', color: '#111827', marginBottom: 6, fontSize: 10 }}>
+            <Text
+              style={{
+                fontFamily: 'Helvetica-Bold',
+                color: '#111827',
+                marginBottom: 6,
+                fontSize: 10,
+              }}
+            >
               Terima kasih telah mempercayakan perjalanan Anda kepada Rehla Indonesia Tours & Travel
             </Text>
-            <Text style={{ marginBottom: 4, fontSize: 9 }}>Untuk informasi lebih lanjut, hubungi kami di +62 831-9732-1658</Text>
+            <Text style={{ marginBottom: 4, fontSize: 9 }}>
+              Untuk informasi lebih lanjut, hubungi kami di +62 831-9732-1658
+            </Text>
             <Text style={{ marginTop: 6, fontSize: 8, color: '#6B7280' }}>
               Dokumen ini dihasilkan otomatis pada{' '}
               {new Date().toLocaleDateString('id-ID', {
