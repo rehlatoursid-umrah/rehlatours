@@ -1,310 +1,359 @@
-import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer'
+// src/components/HematConfirmationPDF.tsx
+import React from 'react';
+import { Document, Page, Text, View, StyleSheet, Image, Font } from '@react-pdf/renderer';
 
-// Register font jika ingin mirip (opsional, default Helvetica sudah cukup bagus)
-// Font.register({ family: 'Helvetica', fonts: [...] });
+// --- 1. Interface untuk Tipe Data ---
+// Sesuaikan dengan struktur data di database/form Anda
+export interface HematConfirmationData {
+  // Data Paket
+  bookingId: string;
+  tanggalCetak: string;
+  paketUmrah: string;
+  hargaPaket: number;
+  metodePembayaran: string;
+  rencanaSetoran: number;
+  frekuensiSetoran: string;
+  catatanTabungan: string;
+  tanggalPendaftaran: string;
 
-interface HematFormData {
-  name: string
-  email: string
-  phone_number: string
-  whatsapp_number: string
-  gender: string
-  place_of_birth: string
-  birth_date: string
-  address: string
-  city: string
-  province: string
-  umrahpackage: string
-  installmentamount: number | string
-  installmentfrequency: string
-  installmentnotes: string
-  submission_date: string
-  booking_id?: string
-  // Tambahan field untuk kompatibilitas jika ada data payment_method
-  payment_type?: string
+  // Informasi Pribadi
+  namaLengkap: string;
+  nik: string;
+  tempatLahir: string;
+  tanggalLahir: string;
+  namaAyah: string;
+  namaIbu: string;
+  jenisKelamin: string;
+  statusPernikahan: string;
+  pekerjaan: string;
+
+  // Informasi Kontak
+  nomorTelepon: string;
+  email: string;
+  alamatLengkap: string;
+  kota: string;
+  provinsi: string;
+  kodePos: string;
+  nomorWhatsApp: string;
+  
+  // Kontak Darurat
+  kontakDaruratNama: string;
+  kontakDaruratTelepon: string;
+  kontakDaruratHubungan: string;
+
+  // Informasi Paspor
+  nomorPaspor: string;
+  tanggalTerbitPaspor: string;
+  tanggalKadaluarsaPaspor: string;
+  tempatTerbitPaspor: string;
+
+  // Informasi Kesehatan
+  memilikiPenyakit: boolean;
+  kebutuhanKhusus: boolean;
+  butuhKursiRoda: boolean;
+  detailPenyakit?: string; // Opsional jika ada input teks tambahan
+
+  // Pengalaman Ibadah
+  pernahUmrah: boolean;
+  pernahHaji: boolean;
 }
 
-// Style yang disesuaikan dengan gaya Rehla Tours Regular (bersih & profesional)
+interface Props {
+  data: HematConfirmationData;
+}
+
+// --- 2. Styles ---
 const styles = StyleSheet.create({
   page: {
-    padding: 40,
+    padding: 30,
     fontFamily: 'Helvetica',
     fontSize: 10,
-    lineHeight: 1.5,
-    color: '#333333',
-    backgroundColor: '#FFFFFF',
+    color: '#333',
+    backgroundColor: '#fff',
   },
-  headerContainer: {
+  header: {
+    marginBottom: 20,
+    borderBottomWidth: 2,
+    borderBottomColor: '#800000', // Maroon
+    paddingBottom: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
-    borderBottomWidth: 2,
-    borderBottomColor: '#8B2346', // Warna Merah Marun khas Rehla
-    paddingBottom: 15,
   },
   headerLeft: {
     flexDirection: 'column',
   },
-  companyName: {
+  headerTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#8B2346',
+    color: '#800000',
     textTransform: 'uppercase',
   },
-  companySub: {
-    fontSize: 9,
+  headerSubtitle: {
+    fontSize: 10,
     color: '#666',
-    marginTop: 2,
+    marginTop: 4,
   },
   headerRight: {
     textAlign: 'right',
   },
-  docTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#333',
-    textTransform: 'uppercase',
-  },
-  bookingId: {
-    fontSize: 10,
-    color: '#8B2346',
-    fontWeight: 'bold',
-    marginTop: 4,
+  logoPlaceholder: {
+    width: 100,
+    height: 40,
+    backgroundColor: '#eee', // Ganti dengan <Image src="..." /> jika ada logo
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 5,
   },
   section: {
     marginBottom: 15,
     padding: 10,
-    backgroundColor: '#FAFAFA',
+    borderWidth: 1,
+    borderColor: '#ddd',
     borderRadius: 4,
+    backgroundColor: '#fafafa',
   },
-  sectionHeader: {
-    fontSize: 11,
+  sectionTitle: {
+    fontSize: 12,
     fontWeight: 'bold',
-    color: '#8B2346',
+    color: '#800000',
     marginBottom: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    borderBottomColor: '#ddd',
     paddingBottom: 4,
-    textTransform: 'uppercase',
   },
   row: {
     flexDirection: 'row',
     marginBottom: 4,
   },
+  colFull: {
+    width: '100%',
+  },
+  colHalf: {
+    width: '50%',
+  },
   label: {
-    width: '35%',
-    fontSize: 9,
-    color: '#666',
+    width: '40%',
     fontWeight: 'bold',
+    color: '#555',
   },
   value: {
-    width: '65%',
-    fontSize: 9,
-    color: '#333',
-  },
-  // Box Khusus untuk Paket & Pembayaran (Highlight)
-  highlightBox: {
-    marginTop: 10,
-    marginBottom: 20,
-    padding: 15,
-    backgroundColor: '#FFF5F7', // Background pink sangat muda
-    borderWidth: 1,
-    borderColor: '#8B2346',
-    borderRadius: 6,
-  },
-  highlightTitle: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#8B2346',
-    textAlign: 'center',
-    marginBottom: 10,
-    textTransform: 'uppercase',
-  },
-  priceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
-  },
-  priceLabel: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  priceValue: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#8B2346',
+    width: '60%',
+    color: '#000',
   },
   footer: {
     position: 'absolute',
     bottom: 30,
-    left: 40,
-    right: 40,
+    left: 30,
+    right: 30,
     textAlign: 'center',
     fontSize: 8,
-    color: '#999',
+    color: '#aaa',
     borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
+    borderTopColor: '#eee',
     paddingTop: 10,
   },
-  qrPlaceholder: {
-    marginTop: 10,
-    alignSelf: 'center',
-    width: 60,
-    height: 60,
-    backgroundColor: '#F0F0F0',
-    justifyContent: 'center',
+  checkboxRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-  }
-})
+    marginBottom: 4,
+  },
+  checkboxLabel: {
+    marginLeft: 5,
+  },
+  checkedBox: {
+    width: 10,
+    height: 10,
+    borderWidth: 1,
+    borderColor: '#000',
+    backgroundColor: '#800000',
+  },
+  uncheckedBox: {
+    width: 10,
+    height: 10,
+    borderWidth: 1,
+    borderColor: '#aaa',
+    backgroundColor: '#fff',
+  },
+});
 
-export default function HematConfirmationPDF({
-  formData,
-  bookingId,
-}: {
-  formData: HematFormData
-  bookingId?: string
-}) {
-  const formatRupiah = (amount: number | string) => {
-    return `Rp ${Number(amount || 0)
-      .toLocaleString('id-ID')
-      .replace(/,/g, '.')}`
-  }
+// --- 3. Helper Component untuk Checkbox ---
+const CheckboxDisplay = ({ label, checked }: { label: string, checked: boolean }) => (
+  <View style={styles.checkboxRow}>
+    <View style={checked ? styles.checkedBox : styles.uncheckedBox} />
+    <Text style={styles.checkboxLabel}>{label}: {checked ? 'Ya' : 'Tidak'}</Text>
+  </View>
+);
 
-  const isTabungan = !formData.payment_type || formData.payment_type === 'tabungan_custom'
-  
-  const freqLabel = {
-    daily: 'Harian',
-    weekly: 'Mingguan',
-    monthly: 'Bulanan',
-    flexible: 'Fleksibel',
-  }[formData.installmentfrequency || ''] || formData.installmentfrequency
+// --- 4. Helper untuk Format Rupiah ---
+const formatRupiah = (amount: number) => {
+  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(amount);
+};
 
+// --- 5. Main Component ---
+const HematConfirmationPDF: React.FC<Props> = ({ data }) => {
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        {/* HEADER */}
-        <View style={styles.headerContainer}>
+        
+        {/* Header */}
+        <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <Text style={styles.companyName}>Rehla Tours & Travel</Text>
-            <Text style={styles.companySub}>PT. Arsy Buana Travelindo</Text>
-            <Text style={styles.companySub}>hematumrah.rehlatours.id</Text>
+            <Text style={styles.headerTitle}>Konfirmasi Pendaftaran</Text>
+            <Text style={styles.headerSubtitle}>Rehlatours.id - Umrah Hemat & Berkualitas</Text>
           </View>
           <View style={styles.headerRight}>
-            <Text style={styles.docTitle}>KONFIRMASI PENDAFTARAN</Text>
-            <Text style={styles.bookingId}>NO. BOOKING: {bookingId || formData.booking_id || '-'}</Text>
-            <Text style={styles.companySub}>Tgl: {formData.submission_date?.split('T')[0]}</Text>
+            <Text>No. Reg: {data.bookingId}</Text>
+            <Text>Tanggal: {data.tanggalCetak}</Text>
           </View>
         </View>
 
-        {/* DATA JAMAAH */}
+        {/* 1. Informasi Paket (Paling Atas karena Penting) */}
         <View style={styles.section}>
-          <Text style={styles.sectionHeader}>Data Jamaah</Text>
+          <Text style={styles.sectionTitle}>Pilihan Paket Umrah</Text>
           <View style={styles.row}>
-            <Text style={styles.label}>Nama Lengkap</Text>
-            <Text style={styles.value}>: {formData.name?.toUpperCase()}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.label}>No. Identitas (KTP)</Text>
-            <Text style={styles.value}>: -</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.label}>Jenis Kelamin</Text>
-            <Text style={styles.value}>: {formData.gender === 'male' ? 'Laki-laki' : 'Perempuan'}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.label}>Tempat, Tgl Lahir</Text>
-            <Text style={styles.value}>: {formData.place_of_birth}, {formData.birth_date?.split('T')[0]}</Text>
-          </View>
-        </View>
-
-        {/* KONTAK & ALAMAT */}
-        <View style={styles.section}>
-          <Text style={styles.sectionHeader}>Informasi Kontak</Text>
-          <View style={styles.row}>
-            <Text style={styles.label}>No. WhatsApp</Text>
-            <Text style={styles.value}>: {formData.whatsapp_number}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.label}>Email</Text>
-            <Text style={styles.value}>: {formData.email}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.label}>Alamat Domisili</Text>
-            <Text style={styles.value}>: {formData.address}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.label}>Kota / Provinsi</Text>
-            <Text style={styles.value}>: {formData.city} / {formData.province}</Text>
-          </View>
-        </View>
-
-        {/* PAKET & PEMBAYARAN (HIGHLIGHT) */}
-        <View style={styles.highlightBox}>
-          <Text style={styles.highlightTitle}>DETAIL PAKET UMRAH</Text>
-          
-          <View style={styles.row}>
-            <Text style={styles.label}>Nama Paket</Text>
-            <Text style={[styles.value, { fontWeight: 'bold' }]}>: {formData.umrahpackage}</Text>
-          </View>
-
-          {isTabungan ? (
-            <>
-              <View style={[styles.row, { marginTop: 5 }]}>
-                <Text style={styles.label}>Skema Pembayaran</Text>
-                <Text style={styles.value}>: TABUNGAN UMRAH HEMAT</Text>
+            <View style={styles.colHalf}>
+              <View style={styles.row}>
+                <Text style={styles.label}>Nama Paket:</Text>
+                <Text style={styles.value}>{data.paketUmrah}</Text>
               </View>
               <View style={styles.row}>
-                <Text style={styles.label}>Frekuensi Setoran</Text>
-                <Text style={styles.value}>: {freqLabel}</Text>
+                <Text style={styles.label}>Harga:</Text>
+                <Text style={styles.value}>{formatRupiah(data.hargaPaket)}</Text>
               </View>
               <View style={styles.row}>
-                <Text style={styles.label}>Catatan</Text>
-                <Text style={styles.value}>: {formData.installmentnotes || '-'}</Text>
+                <Text style={styles.label}>Tgl Daftar:</Text>
+                <Text style={styles.value}>{data.tanggalPendaftaran}</Text>
               </View>
-              
-              <View style={styles.priceRow}>
-                <Text style={styles.priceLabel}>RENCANA SETORAN:</Text>
-                <Text style={styles.priceValue}>{formatRupiah(formData.installmentamount)}</Text>
+            </View>
+            <View style={styles.colHalf}>
+              <View style={styles.row}>
+                <Text style={styles.label}>Pembayaran:</Text>
+                <Text style={styles.value}>{data.metodePembayaran}</Text>
               </View>
-            </>
-          ) : (
-            <>
-              <View style={styles.priceRow}>
-                <Text style={styles.priceLabel}>METODE BAYAR:</Text>
-                <Text style={styles.priceValue}>{formData.payment_type?.toUpperCase()}</Text>
+              <View style={styles.row}>
+                <Text style={styles.label}>Rencana Setoran:</Text>
+                <Text style={styles.value}>{formatRupiah(data.rencanaSetoran)}</Text>
               </View>
-            </>
+              <View style={styles.row}>
+                <Text style={styles.label}>Frekuensi:</Text>
+                <Text style={styles.value}>{data.frekuensiSetoran}</Text>
+              </View>
+            </View>
+          </View>
+          {data.catatanTabungan && (
+             <View style={{ marginTop: 5 }}>
+               <Text style={styles.label}>Catatan Rencana Tabungan:</Text>
+               <Text style={{ ...styles.value, width: '100%', fontStyle: 'italic' }}>"{data.catatanTabungan}"</Text>
+             </View>
           )}
         </View>
 
-        {/* INFO TAMBAHAN */}
-        <View style={{ marginTop: 10 }}>
-          <Text style={{ fontSize: 9, fontWeight: 'bold', marginBottom: 5 }}>Catatan Penting:</Text>
-          <Text style={{ fontSize: 8, color: '#555', marginBottom: 2 }}>
-            1. Dokumen ini adalah bukti pendaftaran awal yang sah.
-          </Text>
-          <Text style={{ fontSize: 8, color: '#555', marginBottom: 2 }}>
-            2. Harap simpan bukti ini untuk keperluan administrasi selanjutnya.
-          </Text>
-          <Text style={{ fontSize: 8, color: '#555', marginBottom: 2 }}>
-            3. Tim kami akan segera menghubungi Anda untuk konfirmasi jadwal dan teknis setoran.
-          </Text>
+        {/* 2. Informasi Pribadi */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Informasi Pribadi</Text>
+          <View style={styles.row}>
+            <View style={styles.colHalf}>
+              <View style={styles.row}>
+                <Text style={styles.label}>Nama Lengkap:</Text>
+                <Text style={styles.value}>{data.namaLengkap}</Text>
+              </View>
+              <View style={styles.row}>
+                <Text style={styles.label}>NIK:</Text>
+                <Text style={styles.value}>{data.nik}</Text>
+              </View>
+              <View style={styles.row}>
+                <Text style={styles.label}>Tempat/Tgl Lahir:</Text>
+                <Text style={styles.value}>{data.tempatLahir}, {data.tanggalLahir}</Text>
+              </View>
+              <View style={styles.row}>
+                <Text style={styles.label}>Jenis Kelamin:</Text>
+                <Text style={styles.value}>{data.jenisKelamin}</Text>
+              </View>
+            </View>
+            <View style={styles.colHalf}>
+              <View style={styles.row}>
+                <Text style={styles.label}>Status:</Text>
+                <Text style={styles.value}>{data.statusPernikahan}</Text>
+              </View>
+              <View style={styles.row}>
+                <Text style={styles.label}>Pekerjaan:</Text>
+                <Text style={styles.value}>{data.pekerjaan}</Text>
+              </View>
+              <View style={styles.row}>
+                <Text style={styles.label}>Nama Ayah:</Text>
+                <Text style={styles.value}>{data.namaAyah}</Text>
+              </View>
+              <View style={styles.row}>
+                <Text style={styles.label}>Nama Ibu:</Text>
+                <Text style={styles.value}>{data.namaIbu}</Text>
+              </View>
+            </View>
+          </View>
         </View>
 
-        {/* FOOTER */}
-        <View style={styles.footer}>
-          <Text>PT. Arsy Buana Travelindo | PPIU No. 123 Tahun 2024</Text>
-          <Text>Office: Jl. Contoh Alamat Kantor No. 123, Jakarta Selatan</Text>
-          <Text style={{ marginTop: 4 }}>www.rehlatours.id | hematumrah.rehlatours.id</Text>
+        {/* 3. Informasi Kontak & Darurat */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Kontak & Alamat</Text>
+          <View style={styles.row}>
+            <View style={styles.colHalf}>
+               <Text style={{ fontWeight: 'bold', marginBottom: 4 }}>Kontak Pribadi</Text>
+               <View style={styles.row}><Text style={styles.label}>No. HP:</Text><Text style={styles.value}>{data.nomorTelepon}</Text></View>
+               <View style={styles.row}><Text style={styles.label}>WhatsApp:</Text><Text style={styles.value}>{data.nomorWhatsApp}</Text></View>
+               <View style={styles.row}><Text style={styles.label}>Email:</Text><Text style={styles.value}>{data.email}</Text></View>
+               <View style={styles.row}><Text style={styles.label}>Alamat:</Text><Text style={styles.value}>{data.alamatLengkap}</Text></View>
+               <View style={styles.row}><Text style={styles.label}>Kota/Prov:</Text><Text style={styles.value}>{data.kota}, {data.provinsi} {data.kodePos}</Text></View>
+            </View>
+            <View style={styles.colHalf}>
+               <Text style={{ fontWeight: 'bold', marginBottom: 4 }}>Kontak Darurat</Text>
+               <View style={styles.row}><Text style={styles.label}>Nama:</Text><Text style={styles.value}>{data.kontakDaruratNama}</Text></View>
+               <View style={styles.row}><Text style={styles.label}>Hubungan:</Text><Text style={styles.value}>{data.kontakDaruratHubungan}</Text></View>
+               <View style={styles.row}><Text style={styles.label}>Telepon:</Text><Text style={styles.value}>{data.kontakDaruratTelepon}</Text></View>
+            </View>
+          </View>
         </View>
+
+        {/* 4. Paspor, Kesehatan & Pengalaman (Digabung agar hemat tempat) */}
+        <View style={styles.row}>
+          {/* Kolom Kiri: Paspor */}
+          <View style={[styles.colHalf, { paddingRight: 5 }]}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Data Paspor</Text>
+              <View style={styles.row}><Text style={styles.label}>Nomor:</Text><Text style={styles.value}>{data.nomorPaspor}</Text></View>
+              <View style={styles.row}><Text style={styles.label}>Tempat Terbit:</Text><Text style={styles.value}>{data.tempatTerbitPaspor}</Text></View>
+              <View style={styles.row}><Text style={styles.label}>Tgl Terbit:</Text><Text style={styles.value}>{data.tanggalTerbitPaspor}</Text></View>
+              <View style={styles.row}><Text style={styles.label}>Tgl Exp:</Text><Text style={styles.value}>{data.tanggalKadaluarsaPaspor}</Text></View>
+            </View>
+          </View>
+
+          {/* Kolom Kanan: Kesehatan & Pengalaman */}
+          <View style={[styles.colHalf, { paddingLeft: 5 }]}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Kesehatan & Pengalaman</Text>
+              
+              <Text style={{ fontSize: 9, fontWeight: 'bold', marginTop: 2 }}>Riwayat Kesehatan:</Text>
+              <CheckboxDisplay label="Penyakit Tertentu" checked={data.memilikiPenyakit} />
+              <CheckboxDisplay label="Kebutuhan Khusus" checked={data.kebutuhanKhusus} />
+              <CheckboxDisplay label="Kursi Roda" checked={data.butuhKursiRoda} />
+              
+              <Text style={{ fontSize: 9, fontWeight: 'bold', marginTop: 6 }}>Pengalaman Ibadah:</Text>
+              <CheckboxDisplay label="Pernah Umrah" checked={data.pernahUmrah} />
+              <CheckboxDisplay label="Pernah Haji" checked={data.pernahHaji} />
+            </View>
+          </View>
+        </View>
+
+        {/* Footer */}
+        <View style={styles.footer}>
+          <Text>Dokumen ini dibuat secara otomatis oleh sistem Rehlatours.id.</Text>
+          <Text>Harap simpan dokumen ini sebagai bukti pendaftaran awal Anda.</Text>
+        </View>
+
       </Page>
     </Document>
-  )
-}
+  );
+};
+
+export default HematConfirmationPDF;
+
 
