@@ -7,8 +7,6 @@ import axios from 'axios'
 import { promises as fsp } from 'fs'
 import fs from 'fs'
 
-import ConfirmationPDF from '@/components/ConfirmationPDF'
-
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
@@ -152,15 +150,35 @@ export async function POST(request: NextRequest) {
 
     const pdfData = normalizeForPdf(parsedData)
 
-    // Optional: debug
-    // console.log('PDF DATA >>>', JSON.stringify(pdfData, null, 2))
+    // ========================================
+    // ✅ PERBAIKAN: DETECT TIPE PDF TEMPLATE
+    // ========================================
+    let pdfDocument
+    const safeBookingId = bookingId.replace(/[^a-zA-Z0-9-_]/g, '')
 
-    const pdfDocument = createElement(ConfirmationPDF as any, { formData: pdfData, bookingId })
+    // 🎯 HEMAT UMRAH (detect HU- atau payment_type tabungan)
+    if (bookingId.startsWith('HU-') || pdfData.payment_type === 'tabungan_custom') {
+      console.log('🎯 HEMAT MODE - Using HematConfirmationPDF')
+      try {
+        const HematConfirmationPDF = (await import('@/components/pdf/HematConfirmationPDF')).default
+        pdfDocument = createElement(HematConfirmationPDF as any, { formData: pdfData, bookingId })
+      } catch (importError) {
+        console.error('❌ Hemat PDF import failed, fallback to regular:', importError)
+        const ConfirmationPDF = (await import('@/components/pdf/ConfirmationPDF')).default
+        pdfDocument = createElement(ConfirmationPDF as any, { formData: pdfData, bookingId })
+      }
+    } 
+    // 📦 UMRAH REGULAR
+    else {
+      console.log('📦 REGULAR MODE - Using ConfirmationPDF')
+      const ConfirmationPDF = (await import('@/components/pdf/ConfirmationPDF')).default
+      pdfDocument = createElement(ConfirmationPDF as any, { formData: pdfData, bookingId })
+    }
+
     const pdfBuffer = await renderToBuffer(pdfDocument as any)
 
     const tempDir = '/tmp'
     await fsp.mkdir(tempDir, { recursive: true })
-    const safeBookingId = bookingId.replace(/[^a-zA-Z0-9-_]/g, '')
     const fileName = `confirmation-${safeBookingId}.pdf`
 
     filePath = path.join(tempDir, fileName)
@@ -211,6 +229,7 @@ export async function POST(request: NextRequest) {
         sizeKB: parseFloat(sizeKB),
         tookMs,
         whatsappResponse: whatsappResponse.data,
+        pdfType: bookingId.startsWith('HU-') ? 'hemat' : 'regular',
       })
     }
 
@@ -249,6 +268,7 @@ export async function GET() {
     status: 'ready',
     endpoint: '/api/send-file',
     project: 'hematumrah.rehlatours.id',
-    version: '2.0-hemat',
+    version: '2.1-hemat-smart', // Updated version
+    features: ['hemat-detection', 'regular-fallback', 'dynamic-pdf'],
   })
 }
