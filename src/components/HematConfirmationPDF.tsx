@@ -1,10 +1,12 @@
-
-
+import React from 'react'
 import { Page, Text, View, Document, StyleSheet, Font, Image } from '@react-pdf/renderer'
 
-// --- Type Definition ---
+// ============================================================================
+// 1. TYPE DEFINITIONS & MAPPER (Penerjemah Data)
+// ============================================================================
+
+// Tipe Data yang dibutuhkan PDF (Clean Data)
 export interface HematFormData {
-  // Data Pribadi
   namaLengkap: string
   jenisKelamin: string
   tempatLahir: string
@@ -13,8 +15,6 @@ export interface HematFormData {
   namaIbu: string
   statusPernikahan: string
   pekerjaan: string
-
-  // Informasi Kontak
   email: string
   nomorTelepon: string
   whatsapp: string
@@ -22,30 +22,20 @@ export interface HematFormData {
   kota: string
   provinsi: string
   kodePos: string
-
-  // Kontak Darurat
   namaKontakDarurat: string
   hubunganKontak: string
   telpKontakDarurat: string
-
-  // Informasi Dokumen
   nik: string
   nomorPaspor: string
   tglPenerbitanPaspor: string
   tglKadaluarsaPaspor: string
   tempatPenerbitanPaspor: string
-
-  // Informasi Kesehatan
   memilikiPenyakit: boolean
   detailPenyakit: string
   kebutuhanKhusus: boolean
   butuhKursiRoda: boolean
-
-  // Pengalaman Ibadah
   pernahUmrah: boolean
   pernahHaji: boolean
-
-  // Informasi Paket
   paketUmrah: string
   hargaPaket: number
   metodePembayaran: string
@@ -55,25 +45,131 @@ export interface HematFormData {
   tglPendaftaran: string
 }
 
-// --- Font Registration (Handle errors gracefully) ---
+// Tipe Data input dari Form Anda (Raw Data)
+// Saya sesuaikan dengan 'HematFormValues' dari file paste.txt Anda
+export interface RawFormInput {
+  name?: string
+  email?: string
+  phone_number?: string
+  whatsapp_number?: string
+  gender?: 'male' | 'female'
+  place_of_birth?: string
+  birth_date?: Date
+  address?: string
+  city?: string
+  province?: string
+  postal_code?: string
+  umrah_package?: string
+  installment_amount?: number
+  installment_frequency?: 'daily' | 'weekly' | 'monthly' | 'flexible'
+  installment_notes?: string
+  nik_number?: string
+  father_name?: string
+  mother_name?: string
+  mariage_status?: string
+  occupation?: string
+  emergency_contact_name?: string
+  relationship?: string
+  emergency_contact_phone?: string
+  passport_number?: string
+  date_of_issue?: Date
+  expiry_date?: Date
+  place_of_issue?: string
+  specific_disease?: boolean
+  illness?: string
+  special_needs?: boolean
+  wheelchair?: boolean
+  has_performed_umrah?: boolean
+  has_performed_hajj?: boolean
+  register_date?: Date
+}
+
+// Tipe sederhana untuk Package (supaya tidak error import)
+interface SimplePackage {
+  id: string
+  title: string
+  price?: number
+}
+
+// --- FUNGSI UTAMA: MAPPER ---
+// Panggil fungsi ini di UmrahForm.tsx untuk mengubah data form ke data PDF
+export const mapFormToPdfData = (
+  form: RawFormInput,
+  packages: SimplePackage[] = []
+): HematFormData => {
+  // Cari nama paket berdasarkan ID yang dipilih
+  const selectedPackage = packages.find((p) => p.id === form.umrah_package)
+  
+  // Helper format tanggal
+  const toDateStr = (d?: Date) => d ? new Date(d).toISOString() : ''
+
+  // Translate Frekuensi
+  const freqMap: Record<string, string> = {
+    daily: 'Harian',
+    weekly: 'Mingguan',
+    monthly: 'Bulanan',
+    flexible: 'Fleksibel'
+  }
+
+  return {
+    namaLengkap: form.name || '-',
+    jenisKelamin: form.gender === 'male' ? 'Laki-laki' : form.gender === 'female' ? 'Perempuan' : '-',
+    tempatLahir: form.place_of_birth || '-',
+    tglLahir: toDateStr(form.birth_date),
+    namaAyah: form.father_name || '-',
+    namaIbu: form.mother_name || '-',
+    statusPernikahan: form.mariage_status || '-',
+    pekerjaan: form.occupation || '-',
+    email: form.email || '-',
+    nomorTelepon: form.phone_number || '-',
+    whatsapp: form.whatsapp_number || '-',
+    alamatLengkap: form.address || '-',
+    kota: form.city || '-',
+    provinsi: form.province || '-',
+    kodePos: form.postal_code || '-',
+    namaKontakDarurat: form.emergency_contact_name || '-',
+    hubunganKontak: form.relationship || '-',
+    telpKontakDarurat: form.emergency_contact_phone || '-',
+    nik: form.nik_number || '-',
+    nomorPaspor: form.passport_number || '-',
+    tglPenerbitanPaspor: toDateStr(form.date_of_issue),
+    tglKadaluarsaPaspor: toDateStr(form.expiry_date),
+    tempatPenerbitanPaspor: form.place_of_issue || '-',
+    memilikiPenyakit: form.specific_disease || false,
+    detailPenyakit: form.illness || '-',
+    kebutuhanKhusus: form.special_needs || false,
+    butuhKursiRoda: form.wheelchair || false,
+    pernahUmrah: form.has_performed_umrah || false,
+    pernahHaji: form.has_performed_hajj || false,
+    
+    // Data Paket
+    paketUmrah: selectedPackage?.title || 'Paket Belum Dipilih',
+    hargaPaket: selectedPackage?.price || 0,
+    metodePembayaran: 'Tabungan Umrah',
+    rencanaSetoran: form.installment_amount || 0,
+    frekuensiSetoran: form.installment_frequency ? (freqMap[form.installment_frequency] || form.installment_frequency) : '-',
+    catatanTabungan: form.installment_notes || '-',
+    tglPendaftaran: toDateStr(form.register_date || new Date())
+  }
+}
+
+// ============================================================================
+// 2. STYLES & ASSETS
+// ============================================================================
+
 try {
   Font.register({
     family: 'Helvetica',
-    fonts: [
-      { src: 'Helvetica' },
-    ],
+    fonts: [{ src: 'Helvetica' }],
   })
   Font.register({
     family: 'Helvetica-Bold',
-    fonts: [
-      { src: 'Helvetica-Bold' },
-    ],
+    fonts: [{ src: 'Helvetica-Bold' }],
   })
 } catch (error) {
   console.warn('Font registration warning:', error)
 }
 
-// --- Styles (Matching umrah.rehlatours.id design) ---
 const styles = StyleSheet.create({
   page: {
     fontFamily: 'Helvetica',
@@ -210,7 +306,10 @@ const styles = StyleSheet.create({
   },
 })
 
-// --- Helper Functions ---
+// ============================================================================
+// 3. HELPER FORMATTERS (Untuk Tampilan)
+// ============================================================================
+
 const safeGet = (value: any, defaultValue: any = '-'): any => {
   if (value === null || value === undefined || value === '') return defaultValue
   return value
@@ -248,13 +347,15 @@ const formatValue = (value: any): string => {
   return String(value)
 }
 
-// --- Component Props ---
+// ============================================================================
+// 4. MAIN COMPONENT
+// ============================================================================
+
 interface ConfirmationPDFProps {
   formData: HematFormData
   bookingId: string
 }
 
-// --- Main Component ---
 export default function HematConfirmationPDF({ formData, bookingId }: ConfirmationPDFProps) {
   const safeFormData = formData || {}
   const safeBookingId = bookingId || `HEMAT-${Date.now()}`
@@ -265,11 +366,11 @@ export default function HematConfirmationPDF({ formData, bookingId }: Confirmati
         
         {/* ===== HEADER ===== */}
         <View style={styles.header}>
+          {/* Ganti URL ini dengan logo yang valid/accessible public */}
           <Image
             style={styles.logo}
             src="https://raw.githubusercontent.com/rehlatoursid-umrah/rehlatours/refs/heads/main/public/rehla.png"
           />
-
           <View style={styles.headerTextContainer}>
             <Text style={styles.title}>KONFIRMASI PEMESANAN</Text>
             <Text style={styles.subtitle}>Rehla Indonesia Tours & Travel</Text>
@@ -288,7 +389,6 @@ export default function HematConfirmationPDF({ formData, bookingId }: Confirmati
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>Informasi Pribadi</Text>
             </View>
-
             <View style={styles.row}>
               <Text style={styles.label}>Nama Lengkap</Text>
               <Text style={styles.value}>{formatValue(safeGet(safeFormData.namaLengkap))}</Text>
@@ -524,3 +624,4 @@ export default function HematConfirmationPDF({ formData, bookingId }: Confirmati
     </Document>
   )
 }
+
