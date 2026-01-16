@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { renderToBuffer } from '@react-pdf/renderer'
-import { createElement } from 'react'
+import HematConfirmationPDF from '@/components/HematConfirmationPDF' // Import komponen desain Anda
 import FormData from 'form-data'
-import path from 'path'
 import axios from 'axios'
-import { promises as fsp } from 'fs'
-import fs from 'fs'
 
-import HematConfirmationPDF from '@/components/HematConfirmationPDF'
-
+// ⚠️ PENTING: Runtime nodejs wajib untuk generate PDF
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
@@ -24,6 +20,7 @@ interface LegacyBookingData {
   paymentMethod: string
 }
 
+// === HELPER FUNCTIONS ===
 function safeJsonParse<T>(
   value: string,
   label: string,
@@ -43,50 +40,26 @@ function formatPhoneForWhatsAppJid(phone: string): string {
   return formattedPhone
 }
 
-// === Normalisasi khusus Hemat Umrah ===
-function normalizeForPdf(input: AnyFormData): AnyFormData {
+function normalizeData(input: AnyFormData): AnyFormData {
   const data = input || {}
-
   return {
     ...data,
-
-    // identitas & kontak
     name: data.name ?? data.customerName ?? '',
     email: data.email ?? '',
     phone_number: data.phone_number ?? data.phoneNumber ?? '',
     whatsapp_number: data.whatsapp_number ?? data.whatsappNumber ?? '',
-
-    // alamat
     address: data.address ?? '',
     city: data.city ?? '',
     province: data.province ?? '',
-
-    // paket: schema hemat pakai umrahpackage
-    umrahpackage:
-      data.umrahpackage ??
-      data.umrah_package ??
-      data.packageName ??
-      '',
-
-    // pembayaran & tabungan: schema hemat
+    umrahpackage: data.umrahpackage ?? data.umrah_package ?? data.packageName ?? '',
     payment_type: data.payment_type ?? 'tabungan_custom',
-    installmentamount:
-      data.installmentamount ??
-      data.installment_amount ??
-      '',
-    installmentfrequency:
-      data.installmentfrequency ??
-      data.installment_frequency ??
-      '',
-    installmentnotes:
-      data.installmentnotes ??
-      data.installment_notes ??
-      '',
-
-    submission_date:
-      data.submission_date ??
-      data.register_date ??
-      '',
+    installmentamount: data.installmentamount ?? data.installment_amount ?? 0,
+    installmentfrequency: data.installmentfrequency ?? data.installment_frequency ?? '',
+    installmentnotes: data.installmentnotes ?? data.installment_notes ?? '',
+    submission_date: data.submission_date ?? data.register_date ?? new Date().toISOString(),
+    gender: data.gender ?? 'male', // Default jika kosong
+    place_of_birth: data.place_of_birth ?? '',
+    birth_date: data.birth_date ?? '',
   }
 }
 
@@ -98,42 +71,33 @@ function convertLegacyToGeneric(legacyData: LegacyBookingData): AnyFormData {
     phone_number: legacyData.phoneNumber || '',
     umrahpackage: legacyData.packageName || '',
     payment_method: legacyData.paymentMethod || '',
-    terms_of_service: true,
   }
 }
 
+// === MAIN API HANDLER ===
 export async function POST(request: NextRequest) {
-  const start = Date.now()
-  let filePath: string | null = null
-
   try {
     const formData = await request.formData()
     const phone = (formData.get('phone') as string | null)?.trim() || ''
     const bookingIdInput = (formData.get('bookingId') as string | null)?.trim()
-
     const umrahFormDataJson = (formData.get('umrahFormData') as string | null)?.trim()
     const bookingDataJson = (formData.get('bookingData') as string | null)?.trim()
-
-    const caption =
-      ((formData.get('caption') as string | null) ?? '') || 'Konfirmasi Pendaftaran Umrah Hemat'
+    const caption = ((formData.get('caption') as string | null) ?? '') || 'Konfirmasi Pendaftaran'
 
     if (!phone) {
-      return NextResponse.json({ success: false, error: 'Phone number is required' }, { status: 400 })
+      return NextResponse.json({ success: false, error: 'Phone required' }, { status: 400 })
     }
 
+    // Config WA
     const whatsappEndpoint = process.env.WHATSAPP_API_ENDPOINT
     const whatsappUsername = process.env.WHATSAPP_API_USERNAME
     const whatsappPassword = process.env.WHATSAPP_API_PASSWORD
 
     if (!whatsappEndpoint || !whatsappUsername || !whatsappPassword) {
-      console.error('❌ WhatsApp API config missing:', {
-        endpoint: !!whatsappEndpoint,
-        username: !!whatsappUsername,
-        password: !!whatsappPassword,
-      })
-      return NextResponse.json({ success: false, error: 'Server configuration error' }, { status: 500 })
+      return NextResponse.json({ success: false, error: 'Config missing' }, { status: 500 })
     }
 
+    // Parse Data
     let parsedData: AnyFormData
     let bookingId: string = bookingIdInput || `HU-${Date.now()}`
 
@@ -150,105 +114,82 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Data missing' }, { status: 400 })
     }
 
-    const pdfData = normalizeForPdf(parsedData)
+    // Siapkan data untuk Props Component
+    const normalizedData = normalizeData(parsedData)
+    
+    // Mapping ke tipe data yang diminta HematConfirmationPDF
+    const pdfProps = {
+      formData: {
+        name: normalizedData.name,
+        email: normalizedData.email,
+        phone_number: normalizedData.phone_number,
+        whatsapp_number: normalizedData.whatsapp_number,
+        gender: normalizedData.gender,
+        place_of_birth: normalizedData.place_of_birth,
+        birth_date: normalizedData.birth_date,
+        address: normalizedData.address,
+        city: normalizedData.city,
+        province: normalizedData.province,
+        umrahpackage: normalizedData.umrahpackage,
+        installmentamount: normalizedData.installmentamount,
+        installmentfrequency: normalizedData.installmentfrequency,
+        installmentnotes: normalizedData.installmentnotes,
+        submission_date: normalizedData.submission_date,
+        booking_id: bookingId,
+      },
+      bookingId: bookingId
+    }
 
-    // Optional: debug
-    // console.log('PDF DATA >>>', JSON.stringify(pdfData, null, 2))
+    // ✅ GENERATE PDF BUFFER DARI REACT COMPONENT
+    // Kita render component React menjadi buffer PDF binary
+    const pdfBuffer = await renderToBuffer(
+        <HematConfirmationPDF formData={pdfProps.formData} bookingId={pdfProps.bookingId} />
+    )
 
-    const pdfDocument = createElement(ConfirmationPDF as any, { formData: pdfData, bookingId })
-    const pdfBuffer = await renderToBuffer(pdfDocument as any)
-
-    const tempDir = '/tmp'
-    await fsp.mkdir(tempDir, { recursive: true })
+    const formattedPhone = formatPhoneForWhatsAppJid(phone)
     const safeBookingId = bookingId.replace(/[^a-zA-Z0-9-_]/g, '')
     const fileName = `confirmation-${safeBookingId}.pdf`
 
-    filePath = path.join(tempDir, fileName)
-    await fsp.writeFile(filePath, pdfBuffer as any)
-
-    const sizeKB = (pdfBuffer.byteLength / 1024).toFixed(2)
-    console.log(`✅ PDF Saved: ${fileName} (${sizeKB} KB)`)
-
-    const formattedPhone = formatPhoneForWhatsAppJid(phone)
-    if (!formattedPhone) {
-      return NextResponse.json({ success: false, error: 'Invalid phone number' }, { status: 400 })
-    }
-
+    // Buat Form Data untuk kirim ke WA
     const whatsappForm = new FormData()
     whatsappForm.append('caption', caption)
     whatsappForm.append('phone', formattedPhone)
     whatsappForm.append('is_forwarded', 'false')
-    whatsappForm.append('file', fs.createReadStream(filePath), {
+    whatsappForm.append('file', pdfBuffer, { // Kirim Buffer langsung (tanpa simpan ke disk)
       filename: fileName,
       contentType: 'application/pdf',
     })
 
     const url = `${whatsappEndpoint.replace(/\/$/, '')}/send/file`
-
-    console.log(`🚀 Sending to: ${url}`)
-    console.log(`📱 Phone: ${formattedPhone}`)
-    console.log(`🔐 Auth: ${whatsappUsername}:${'*'.repeat(whatsappPassword.length)}`)
+    console.log(`🚀 Sending PDF (${fileName}) to ${formattedPhone}...`)
 
     const whatsappResponse = await axios.post(url, whatsappForm, {
       headers: { ...whatsappForm.getHeaders() },
       auth: { username: whatsappUsername, password: whatsappPassword },
-      timeout: 45000,
+      timeout: 60000, // Perpanjang timeout karena generate PDF butuh waktu
       maxContentLength: Infinity,
       maxBodyLength: Infinity,
       validateStatus: () => true,
     })
 
-    const tookMs = Date.now() - start
-    console.log(`📥 Response Status: ${whatsappResponse.status}`)
-    console.log(`📥 Response Data:`, JSON.stringify(whatsappResponse.data).substring(0, 300))
-
     if (whatsappResponse.status >= 200 && whatsappResponse.status < 300) {
+      console.log('✅ PDF Sent Successfully')
       return NextResponse.json({
         success: true,
         message: 'PDF sent successfully',
         bookingId,
-        phone: formattedPhone,
-        sizeKB: parseFloat(sizeKB),
-        tookMs,
-        whatsappResponse: whatsappResponse.data,
       })
     }
 
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'WhatsApp API failed',
-        status: whatsappResponse.status,
-        details: whatsappResponse.data,
-        tookMs,
-      },
-      { status: 502 },
-    )
+    console.error('❌ WA Failed:', whatsappResponse.data)
+    return NextResponse.json({ success: false, error: 'WA Failed', details: whatsappResponse.data }, { status: 502 })
+
   } catch (error: any) {
-    console.error('❌ Fatal error:', error?.message || error)
-    return NextResponse.json(
-      {
-        success: false,
-        error: error?.message || 'Unknown error',
-        stack: process.env.NODE_ENV === 'development' ? error?.stack : undefined,
-      },
-      { status: 500 },
-    )
-  } finally {
-    if (filePath) {
-      try {
-        await fsp.unlink(filePath)
-        console.log('🗑️ Temp file cleaned')
-      } catch {}
-    }
+    console.error('❌ Fatal Error:', error)
+    return NextResponse.json({ success: false, error: error?.message || 'Unknown error' }, { status: 500 })
   }
 }
 
 export async function GET() {
-  return NextResponse.json({
-    status: 'ready',
-    endpoint: '/api/send-file',
-    project: 'hematumrah.rehlatours.id',
-    version: '2.0-hemat',
-  })
+  return NextResponse.json({ status: 'ready', version: '4.0-react-pdf-renderer' })
 }
