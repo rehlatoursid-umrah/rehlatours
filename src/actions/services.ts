@@ -2,10 +2,7 @@
 
 import { getPayload } from 'payload'
 import config from '@/payload.config'
-
-// ==========================================
-// TYPES & INTERFACES
-// ==========================================
+import { validateUmrahFormSimple } from '@/lib/validations-simple'
 
 interface SubmitResponse {
   success: boolean
@@ -20,58 +17,77 @@ interface SubmitResponse {
   errors?: string[]
 }
 
-// ==========================================
-// HELPER FUNCTIONS
-// ==========================================
-
-function safeString(v: any): string {
-  if (v === null || v === undefined) return ''
-  return String(v).trim()
+function safeExtract(value: any): any {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'string') return value.toString()
+  if (typeof value === 'number') return Number(value)
+  if (typeof value === 'boolean') return Boolean(value)
+  if (value instanceof Date) return new Date(value.getTime())
+  if (typeof value === 'object' && value.toString) return value.toString()
+  return String(value)
 }
 
-function safeNumber(v: any): number | null {
-  if (v === null || v === undefined || v === '') return null
-  const n = Number(v)
-  return Number.isFinite(n) ? n : null
-}
-
-function safeBoolean(v: any): boolean {
-  if (v === true || v === 'true' || v === 1 || v === '1') return true
-  return false
-}
-
-function safeDate(v: any): string | null {
-  if (!v) return null
-  try {
-    const d = new Date(v)
-    return isNaN(d.getTime()) ? null : d.toISOString()
-  } catch {
-    return null
+function buildCleanData(formData: any) {
+  return {
+    booking_id: '',
+    name: safeExtract(formData.name) || '',
+    register_date: formData.register_date
+      ? new Date(formData.register_date).toISOString()
+      : new Date().toISOString(),
+    gender: safeExtract(formData.gender) || 'male',
+    place_of_birth: safeExtract(formData.place_of_birth) || '',
+    birth_date: formData.birth_date ? new Date(formData.birth_date).toISOString() : null,
+    father_name: safeExtract(formData.father_name) || '',
+    mother_name: safeExtract(formData.mother_name) || '',
+    address: safeExtract(formData.address) || '',
+    city: safeExtract(formData.city) || '',
+    province: safeExtract(formData.province) || '',
+    postal_code: safeExtract(formData.postal_code) || '',
+    occupation: safeExtract(formData.occupation) || '',
+    specific_disease: Boolean(formData.specific_disease) || false,
+    illness: safeExtract(formData.illness) || null,
+    special_needs: Boolean(formData.special_needs) || false,
+    wheelchair: Boolean(formData.wheelchair) || false,
+    nik_number: safeExtract(formData.nik_number) || '',
+    passport_number: safeExtract(formData.passport_number) || '',
+    date_of_issue: formData.date_of_issue ? new Date(formData.date_of_issue).toISOString() : null,
+    expiry_date: formData.expiry_date ? new Date(formData.expiry_date).toISOString() : null,
+    place_of_issue: safeExtract(formData.place_of_issue) || '',
+    phone_number: safeExtract(formData.phone_number) || '',
+    whatsapp_number: safeExtract(formData.whatsapp_number) || '',
+    email: safeExtract(formData.email) || '',
+    has_performed_umrah: Boolean(formData.has_performed_umrah) || false,
+    has_performed_hajj: Boolean(formData.has_performed_hajj) || false,
+    emergency_contact_name: safeExtract(formData.emergency_contact_name) || '',
+    relationship: safeExtract(formData.relationship) || 'parents',
+    emergency_contact_phone: safeExtract(formData.emergency_contact_phone) || '',
+    mariage_status: safeExtract(formData.mariage_status) || 'single',
+    umrah_package: safeExtract(formData.umrah_package) || '',
+    payment_method: safeExtract(formData.payment_method) || 'lunas',
+    terms_of_service: Boolean(formData.terms_of_service) || false,
+    submission_date: new Date().toISOString(),
+    status: 'pending_review',
   }
 }
 
-// Format phone number for WhatsApp (62xxx)
+// Helper function untuk format phone number dengan benar
 function formatPhoneForWhatsApp(phone: string): string {
   if (!phone) return ''
+  
+  // Hapus semua karakter non-digit
   let formatted = phone.replace(/\D/g, '')
-  if (formatted.startsWith('0')) formatted = '62' + formatted.substring(1)
-  else if (!formatted.startsWith('62')) formatted = '62' + formatted
+  
+  // Ganti 0 di awal dengan 62
+  if (formatted.startsWith('0')) {
+    formatted = '62' + formatted.substring(1)
+  }
+  // Tambahkan 62 kalau belum ada
+  else if (!formatted.startsWith('62')) {
+    formatted = '62' + formatted
+  }
+  
   return formatted
 }
-
-function resolveBaseUrl(): string {
-  let baseUrl =
-    process.env.NEXT_PUBLIC_BASE_URL ||
-    process.env.VERCEL_URL ||
-    'https://hematumrah.rehlatours.id'
-
-  if (!baseUrl.startsWith('http')) baseUrl = `https://${baseUrl}`
-  return baseUrl.replace(/\/$/, '')
-}
-
-// ==========================================
-// WHATSAPP SENDER
-// ==========================================
 
 async function sendPdfToWhatsapp(params: {
   baseUrl: string
@@ -82,155 +98,37 @@ async function sendPdfToWhatsapp(params: {
 }) {
   const { baseUrl, phone, bookingId, umrahFormData, caption } = params
 
-  const formattedPhone = formatPhoneForWhatsApp(phone)
-  if (!formattedPhone) {
-    console.error('Invalid phone number for WA:', phone)
-    return { success: false, error: 'Invalid phone number' }
-  }
-
-  // Gunakan endpoint API internal Next.js
-  const apiUrl = `${baseUrl}/api/send-file`
-
-  const fd = new FormData()
-  fd.append('phone', formattedPhone)
-  fd.append('bookingId', bookingId)
-  
-  // Serialize data form lengkap ke JSON string
-  fd.append('umrahFormData', JSON.stringify(umrahFormData))
-  
-  if (caption) fd.append('caption', caption)
-
   try {
-    const res = await fetch(apiUrl, { method: 'POST', body: fd })
-    const text = await res.text()
+    const formattedPhone = formatPhoneForWhatsApp(phone)
+    if (!formattedPhone) throw new Error('Invalid phone number')
 
+    const apiUrl = `${baseUrl}/api/send-file`
+    console.log(`📤 Sending PDF to ${formattedPhone} via ${apiUrl}`)
+
+    const fd = new FormData()
+    fd.append('phone', formattedPhone)
+    fd.append('bookingId', bookingId)
+    fd.append('umrahFormData', JSON.stringify(umrahFormData))
+    if (caption) fd.append('caption', caption)
+
+    const res = await fetch(apiUrl, {
+      method: 'POST',
+      body: fd,
+    })
+
+    const text = await res.text()
     if (!res.ok) {
-      console.error('Failed to send PDF to WA:', text)
+      console.error(`❌ WA API Error (${res.status}): ${text}`)
       return { success: false, error: text }
     }
+
+    console.log(`✅ WA Success to ${formattedPhone}`)
     return JSON.parse(text)
-  } catch (err: any) {
-    console.error('Error in sendPdfToWhatsapp:', err)
-    return { success: false, error: err.message }
+  } catch (error: any) {
+    console.error(`❌ SendPdfToWhatsapp Failed: ${error.message}`)
+    throw error
   }
 }
-
-// ==========================================
-// VALIDATION & DATA BUILDING
-// ==========================================
-
-/**
- * Validator minimal: Pastikan field krusial terisi.
- * Field opsional (seperti penyakit, paspor) boleh kosong tergantung konteks.
- */
-function validateHematForm(formData: any): { success: boolean; errors?: string[] } {
-  const errors: string[] = []
-
-  const requiredFields = [
-    { key: 'name', label: 'Nama Lengkap' },
-    { key: 'email', label: 'Email' },
-    { key: 'phone_number', label: 'Nomor Telepon' },
-    { key: 'whatsapp_number', label: 'Nomor WhatsApp' },
-    { key: 'gender', label: 'Jenis Kelamin' },
-    { key: 'place_of_birth', label: 'Tempat Lahir' },
-    { key: 'birth_date', label: 'Tanggal Lahir' },
-    { key: 'address', label: 'Alamat Lengkap' },
-    { key: 'city', label: 'Kota' },
-    { key: 'province', label: 'Provinsi' },
-    { key: 'umrah_package', label: 'Pilihan Paket' }, // ID paket
-    { key: 'installment_frequency', label: 'Frekuensi Setoran' },
-  ]
-
-  requiredFields.forEach((field) => {
-    if (!safeString(formData?.[field.key])) {
-      errors.push(`${field.label} wajib diisi`)
-    }
-  })
-
-  // Validasi khusus numeric
-  const installmentAmount = safeNumber(formData?.installment_amount)
-  if (installmentAmount === null || installmentAmount <= 0) {
-    errors.push('Rencana setoran wajib diisi dan harus lebih dari 0')
-  }
-
-  return errors.length ? { success: false, errors } : { success: true }
-}
-
-/**
- * Membersihkan dan menyusun data agar sesuai dengan Schema Collection `Hematumrahdaftar`
- * DAN mencakup semua field tambahan dari UI agar muncul di PDF.
- */
-function buildCleanDataHemat(formData: any) {
-  // Mapping field UI (camelCase/lowercase) ke field database payload
-  // Pastikan nama property di sini cocok dengan apa yang diharapkan 'ConfirmationPDF.tsx'
-  // atau normalizer di API route.
-  
-  return {
-    // --- Identitas Utama ---
-    name: safeString(formData.name),
-    niknumber: safeString(formData.niknumber), // UI: niknumber
-    gender: safeString(formData.gender),
-    place_of_birth: safeString(formData.place_of_birth), // UI: placeofbirth
-    birth_date: safeDate(formData.birth_date),
-    mariagestatus: safeString(formData.mariagestatus),
-    occupation: safeString(formData.occupation),
-
-    // --- Keluarga / Orang Tua ---
-    fathername: safeString(formData.fathername),
-    mothername: safeString(formData.mothername),
-
-    // --- Kontak ---
-    email: safeString(formData.email),
-    phone_number: safeString(formData.phone_number), // UI: phonenumber
-    whatsapp_number: safeString(formData.whatsapp_number), // UI: whatsappnumber
-    
-    // --- Alamat ---
-    address: safeString(formData.address),
-    city: safeString(formData.city),
-    province: safeString(formData.province),
-    postalcode: safeString(formData.postalcode),
-
-    // --- Kontak Darurat ---
-    emergencycontactname: safeString(formData.emergencycontactname),
-    emergencycontactphone: safeString(formData.emergencycontactphone),
-    relationship: safeString(formData.relationship),
-
-    // --- Dokumen Paspor ---
-    passportnumber: safeString(formData.passportnumber),
-    dateofissue: safeDate(formData.dateofissue),
-    expirydate: safeDate(formData.expirydate),
-    placeofissue: safeString(formData.placeofissue),
-
-    // --- Kesehatan ---
-    specificdisease: safeBoolean(formData.specificdisease),
-    illness: safeString(formData.illness), // Penjelasan penyakit
-    specialneeds: safeBoolean(formData.specialneeds),
-    wheelchair: safeBoolean(formData.wheelchair),
-
-    // --- Pengalaman Ibadah ---
-    hasperformedumrah: safeBoolean(formData.hasperformedumrah),
-    hasperformedhajj: safeBoolean(formData.hasperformedhajj),
-
-    // --- Paket & Pembayaran (Tabungan) ---
-    // Note: 'umrahpackage' di DB Payload biasanya expect ID relasi
-    umrahpackage: safeString(formData.umrah_package), 
-    
-    payment_type: 'tabungan_custom',
-    installmentamount: safeNumber(formData.installment_amount),
-    installmentfrequency: safeString(formData.installment_frequency) || 'flexible',
-    installmentnotes: safeString(formData.installment_notes),
-
-    // --- Meta ---
-    registerdate: safeDate(formData.register_date) || new Date().toISOString(), // UI: registerdate
-    submission_date: new Date().toISOString(),
-    termsofservice: safeBoolean(formData.termsofservice),
-    status: 'pending_review',
-  }
-}
-
-// ==========================================
-// EXPORTED SERVER ACTIONS
-// ==========================================
 
 export async function getUmrahPackageOptions() {
   try {
@@ -241,16 +139,15 @@ export async function getUmrahPackageOptions() {
       select: { id: true, name: true, price: true, duration: true },
       limit: 100,
     })
-
     const options = packages.docs.map((pkg: any) => ({
       id: pkg.id,
       name: pkg.name,
       price: pkg.price,
       duration: pkg.duration,
     }))
-
     return { success: true, data: options }
   } catch (error: any) {
+    console.error('Error fetching package options:', error)
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Terjadi kesalahan saat mengambil opsi paket',
@@ -259,109 +156,113 @@ export async function getUmrahPackageOptions() {
   }
 }
 
-export async function submitHematUmrahForm(formData: any): Promise<SubmitResponse> {
+export async function submitUmrahForm(formData: any): Promise<SubmitResponse> {
+  console.log('=== SUBMIT FORM START ===')
+
   try {
     if (!formData) return { success: false, error: 'Form data is missing' }
 
-    // 1. Validasi
-    const validation = validateHematForm(formData)
-    if (!validation.success) {
+    const simpleValidationResult = validateUmrahFormSimple(formData)
+    if (!simpleValidationResult.success) {
       return {
         success: false,
-        error: 'Validasi gagal',
-        errors: validation.errors,
+        error: `Simple validation failed: ${simpleValidationResult.error}`,
+        errors: simpleValidationResult.errors,
       }
     }
 
-    // 2. Bersihkan & Strukturkan Data (Sertakan SEMUA field)
-    const cleanData = buildCleanDataHemat(formData)
+    const cleanData = buildCleanData(formData)
     const payload = await getPayload({ config })
 
-    // 3. Simpan ke Payload CMS
-    // Pastikan slug collection benar: 'hemat-umrah-daftar'
     const result = await payload.create({
-      collection: 'hemat-umrah-daftar', 
+      collection: 'umrah-form-minimal',
       data: cleanData,
     })
 
-    const bookingId = (result as any).booking_id || `HU-${Date.now()}`
-    const baseUrl = resolveBaseUrl()
+    const bookingId = (result as any).booking_id || `RT-${Date.now()}`
+    console.log('✅ Data saved. ID:', bookingId)
 
-    // 4. Siapkan Data untuk WhatsApp & PDF
-    const customerPhone = formatPhoneForWhatsApp(cleanData.whatsapp_number || cleanData.phone_number)
-    const adminPhone = formatPhoneForWhatsApp(process.env.ADMIN_WA_PHONE || '') // Pastikan ENV ini ada
+    // --- FIX URL HANDLING ---
+    // Gunakan environment variable atau fallback hardcoded jika perlu
+    let baseUrl = process.env.NEXT_PUBLIC_BASE_URL || process.env.VERCEL_URL || 'https://umrah.rehlatours.id'
+    
+    // Pastikan URL valid
+    if (!baseUrl.startsWith('http')) {
+      baseUrl = `https://${baseUrl}`
+    }
+    
+    // Hapus trailing slash jika ada
+    baseUrl = baseUrl.replace(/\/$/, '')
 
-    // Format Rupiah untuk caption
-    const formattedInstallment = cleanData.installmentamount?.toLocaleString('id-ID', {
-      style: 'currency',
-      currency: 'IDR',
-      minimumFractionDigits: 0
-    }) || '0'
+    console.log('🌐 Base URL for API:', baseUrl)
 
-    const captionCustomer = `🕌 *Konfirmasi Pendaftaran Umrah Hemat (Tabungan)*
+    // --- PREPARE WHATSAPP DATA ---
+    const customerPhone = formatPhoneForWhatsApp(cleanData.whatsapp_number || cleanData.phone_number || '')
+    const adminPhone = formatPhoneForWhatsApp(process.env.ADMIN_WA_PHONE || '')
+
+    const captionCustomer = `🕌 *Konfirmasi Pendaftaran Umrah*
 
 Assalamu'alaikum ${cleanData.name},
 
-Alhamdulillah! Pendaftaran program tabungan umrah Anda telah berhasil dicatat.
+Alhamdulillah! Pendaftaran umrah Anda telah berhasil dicatat.
 
 📋 *Detail Pendaftaran:*
 • Booking ID: ${bookingId}
 • Nama: ${cleanData.name}
-• Rencana Setoran: ${formattedInstallment}
-• Frekuensi: ${cleanData.installmentfrequency === 'monthly' ? 'Bulanan' : cleanData.installmentfrequency === 'weekly' ? 'Mingguan' : cleanData.installmentfrequency === 'daily' ? 'Harian' : 'Fleksibel'}
 
-Terlampir dokumen konfirmasi pendaftaran lengkap (PDF). 
-Tim kami akan segera menghubungi Anda untuk verifikasi selanjutnya.
+Terlampir konfirmasi pendaftaran (PDF). Tim kami akan segera menghubungi Anda.
 
 Jazakallahu khairan,
 *Rehla Tours Team*`
 
-    const captionAdmin = `📥 *Pendaftaran Umrah Hemat Baru*
-    
+    const captionAdmin = `📥 *Pendaftaran Umrah Baru*
 ID: ${bookingId}
 Nama: ${cleanData.name}
 WA: ${customerPhone}
-Paket ID: ${cleanData.umrahpackage}
-Setoran: ${formattedInstallment}
-Kota: ${cleanData.city}`
+Paket: ${cleanData.umrah_package}`
 
-    // Data yang dikirim ke generator PDF (API Route)
-    // Kita kirim 'cleanData' yang sudah lengkap field-nya + booking_id
-    const dataForPdf = { ...cleanData, booking_id: bookingId }
-
-    // 5. Kirim WhatsApp (Parallel)
+    // --- SEND WHATSAPP (NON-BLOCKING / BACKGROUND) ---
+    // Kita tidak menggunakan 'await' di sini agar user langsung dapat response sukses
+    // Promise.allSettled memastikan error di satu request tidak menghentikan yang lain
     Promise.allSettled([
-      customerPhone
-        ? sendPdfToWhatsapp({
-            baseUrl,
-            phone: customerPhone,
-            bookingId,
-            umrahFormData: dataForPdf,
-            caption: captionCustomer,
-          })
-        : Promise.resolve(),
-
-      adminPhone
-        ? sendPdfToWhatsapp({
-            baseUrl,
-            phone: adminPhone,
-            bookingId,
-            umrahFormData: dataForPdf,
-            caption: captionAdmin,
-          })
-        : Promise.resolve(),
-    ])
+      customerPhone ? sendPdfToWhatsapp({
+        baseUrl,
+        phone: customerPhone,
+        bookingId,
+        umrahFormData: cleanData,
+        caption: captionCustomer,
+      }) : Promise.resolve(),
+      
+      adminPhone ? sendPdfToWhatsapp({
+        baseUrl,
+        phone: adminPhone,
+        bookingId,
+        umrahFormData: cleanData,
+        caption: captionAdmin,
+      }) : Promise.resolve()
+    ]).then((results) => {
+      console.log('📝 Background WhatsApp tasks completed')
+      results.forEach((res, idx) => {
+        if (res.status === 'rejected') {
+           console.error(`❌ WA Task ${idx} failed:`, res.reason)
+        }
+      })
+    })
 
     return {
       success: true,
       data: {
         id: result.id,
         booking_id: bookingId,
-        message: `Pendaftaran berhasil! ID Booking: ${bookingId}. Dokumen konfirmasi sedang dikirim ke WhatsApp Anda.`,
+        message: `Pendaftaran berhasil! ID Booking: ${bookingId}. Notifikasi WhatsApp sedang dikirim.`,
       },
     }
+
   } catch (error) {
-    console.error('submitHematUmrahForm error:', error)
-    return { success: false, error: 'Terjadi kesalahan sistem saat memproses pendaftaran. Silakan coba lagi.' }
+    console.error('=== SUBMIT FORM ERROR ===', error)
+    return {
+      success: false,
+      error: 'Terjadi kesalahan sistem. Silakan coba lagi.',
+    }
   }
 }
