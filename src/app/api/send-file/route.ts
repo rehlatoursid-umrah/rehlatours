@@ -4,8 +4,11 @@ import path from 'path'
 import axios from 'axios'
 import { promises as fsp } from 'fs'
 import fs from 'fs'
-// ✅ PASTIKAN: npm install pdf-lib
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
+
+// CATATAN PENTING:
+// Kode ini sengaja TIDAK mengimport komponen React dari src/components
+// untuk menghindari error build di server Next.js App Router.
+// Sebagai gantinya, kita generate file konfirmasi teks sederhana.
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -41,6 +44,7 @@ function formatPhoneForWhatsAppJid(phone: string): string {
   return formattedPhone
 }
 
+// === Normalisasi Data ===
 function normalizeForPdf(input: AnyFormData): AnyFormData {
   const data = input || {}
   return {
@@ -49,13 +53,15 @@ function normalizeForPdf(input: AnyFormData): AnyFormData {
     email: data.email ?? '',
     phone_number: data.phone_number ?? data.phoneNumber ?? '',
     whatsapp_number: data.whatsapp_number ?? data.whatsappNumber ?? '',
+    address: data.address ?? '',
     city: data.city ?? '',
     province: data.province ?? '',
     umrahpackage: data.umrahpackage ?? data.umrah_package ?? data.packageName ?? '',
+    payment_type: data.payment_type ?? 'tabungan_custom',
     installmentamount: data.installmentamount ?? data.installment_amount ?? '',
     installmentfrequency: data.installmentfrequency ?? data.installment_frequency ?? '',
     installmentnotes: data.installmentnotes ?? data.installment_notes ?? '',
-    payment_method: data.payment_method ?? data.payment_type ?? '',
+    submission_date: data.submission_date ?? data.register_date ?? '',
   }
 }
 
@@ -67,95 +73,51 @@ function convertLegacyToGeneric(legacyData: LegacyBookingData): AnyFormData {
     phone_number: legacyData.phoneNumber || '',
     umrahpackage: legacyData.packageName || '',
     payment_method: legacyData.paymentMethod || '',
+    terms_of_service: true,
   }
 }
 
-// === GENERATOR PDF ASLI (Menggantikan versi .txt) ===
+// === GENERATOR FILE TEKS (Server-Safe) ===
 async function generateServerPdf(data: AnyFormData, bookingId: string, isHemat: boolean): Promise<Buffer> {
-    const pdfDoc = await PDFDocument.create()
-    const page = pdfDoc.addPage([595.28, 841.89]) // A4
-    const { width, height } = page.getSize()
-    
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
-    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+    const title = isHemat ? 'KONFIRMASI TABUNGAN UMRAH HEMAT' : 'KONFIRMASI PENDAFTARAN UMRAH'
+    const date = new Date().toISOString().split('T')[0]
+    const rupiah = (val: any) => 'Rp ' + Number(val || 0).toLocaleString('id-ID')
 
-    const drawText = (text: string, x: number, y: number, size = 10, isBold = false, color = rgb(0, 0, 0)) => {
-        page.drawText(String(text || ''), { x, y, size, font: isBold ? fontBold : font, color })
-    }
+    // Template Text Rapi
+    let content = `
+==================================================
+           ${title}
+==================================================
+ID Booking    : ${bookingId}
+Tanggal       : ${date}
+--------------------------------------------------
 
-    const primaryColor = isHemat ? rgb(0, 0.5, 0) : rgb(0, 0.2, 0.6)
+DATA JAMAAH
+Nama Lengkap  : ${data.name}
+No. WhatsApp  : ${data.whatsapp_number}
+Email         : ${data.email}
+Domisili      : ${data.city || '-'}, ${data.province || '-'}
 
-    // Header
-    drawText(isHemat ? 'KONFIRMASI TABUNGAN UMRAH HEMAT' : 'KONFIRMASI PENDAFTARAN UMRAH', 50, height - 50, 16, true, primaryColor)
-    drawText('Rehla Tours & Travel', 50, height - 70, 10, false, rgb(0.5, 0.5, 0.5))
-    
-    page.drawLine({
-        start: { x: 50, y: height - 85 },
-        end: { x: width - 50, y: height - 85 },
-        thickness: 1,
-        color: rgb(0.8, 0.8, 0.8),
-    })
+PAKET UMRAH
+Pilihan Paket : ${data.umrahpackage}
 
-    let y = height - 120
-    const lineHeight = 20
+${isHemat ? `
+RENCANA TABUNGAN
+Nominal Setor : ${rupiah(data.installmentamount)}
+Frekuensi     : ${data.installmentfrequency}
+Catatan       : ${data.installmentnotes || '-'}
+` : `
+PEMBAYARAN
+Metode        : ${data.payment_type || data.payment_method || '-'}
+`}
 
-    drawText(`ID Booking: ${bookingId}`, 50, y, 12, true)
-    y -= lineHeight
-    drawText(`Tanggal: ${new Date().toISOString().split('T')[0]}`, 50, y, 10)
-    y -= 40
-
-    // Data Jamaah
-    drawText('DATA JAMAAH', 50, y, 12, true, primaryColor)
-    y -= 25
-    
-    drawText('Nama Lengkap', 50, y, 10, true)
-    drawText(':', 150, y, 10)
-    drawText(data.name, 160, y, 10)
-    y -= lineHeight
-
-    drawText('No. WhatsApp', 50, y, 10, true)
-    drawText(':', 150, y, 10)
-    drawText(data.whatsapp_number, 160, y, 10)
-    y -= lineHeight
-
-    drawText('Domisili', 50, y, 10, true)
-    drawText(':', 150, y, 10)
-    drawText(`${data.city || '-'}, ${data.province || '-'}`, 160, y, 10)
-    y -= 40
-
-    // Paket
-    drawText('PAKET UMRAH', 50, y, 12, true, primaryColor)
-    y -= 25
-    drawText('Paket Dipilih', 50, y, 10, true)
-    drawText(':', 150, y, 10)
-    drawText(data.umrahpackage, 160, y, 10)
-    y -= 40
-
-    // Box Info
-    const boxHeight = 100
-    page.drawRectangle({
-        x: 40, y: y - boxHeight, width: width - 80, height: boxHeight,
-        color: isHemat ? rgb(0.95, 1, 0.95) : rgb(0.95, 0.95, 1),
-        borderColor: primaryColor, borderWidth: 1,
-    })
-
-    const boxY = y - 25
-    const boxX = 60
-
-    if (isHemat) {
-        drawText('RENCANA TABUNGAN', boxX, boxY, 12, true, primaryColor)
-        drawText(`Nominal Setoran: Rp ${Number(data.installmentamount || 0).toLocaleString('id-ID')}`, boxX, boxY - 30, 10)
-        drawText(`Frekuensi: ${data.installmentfrequency}`, boxX, boxY - 50, 10)
-        drawText(`Catatan: ${data.installmentnotes || '-'}`, boxX, boxY - 70, 10)
-    } else {
-        drawText('METODE PEMBAYARAN', boxX, boxY, 12, true, primaryColor)
-        drawText(`Metode: ${data.payment_method || '-'}`, boxX, boxY - 30, 10)
-    }
-
-    drawText('Terima kasih telah mendaftar di Rehla Tours.', 50, 50, 9, false, rgb(0.5, 0.5, 0.5))
-
-    const pdfBytes = await pdfDoc.save()
-    return Buffer.from(pdfBytes)
+--------------------------------------------------
+Terima kasih telah mendaftar di Rehla Tours.
+Simpan dokumen ini sebagai bukti pendaftaran.
+Website: hematumrah.rehlatours.id
+==================================================
+`
+    return Buffer.from(content, 'utf-8')
 }
 
 export async function POST(request: NextRequest) {
@@ -194,16 +156,15 @@ export async function POST(request: NextRequest) {
     }
 
     const pdfData = normalizeForPdf(parsedData)
-    const isHemat = bookingId.startsWith('HU-') || pdfData.payment_method === 'tabungan_custom'
     const safeBookingId = bookingId.replace(/[^a-zA-Z0-9-_]/g, '')
+    const isHemat = bookingId.startsWith('HU-') || pdfData.payment_type === 'tabungan_custom'
 
-    // ✅ GENERATE PDF ASLI
+    // ✅ GENERATE FILE TXT
     const pdfBuffer = await generateServerPdf(pdfData, bookingId, isHemat)
     
-    // Simpan Temp File PDF
     const tempDir = '/tmp'
     await fsp.mkdir(tempDir, { recursive: true })
-    const fileName = `confirmation-${safeBookingId}.pdf` // ✅ Ekstensi PDF
+    const fileName = `confirmation-${safeBookingId}.txt` // Ekstensi .txt
     filePath = path.join(tempDir, fileName)
     await fsp.writeFile(filePath, pdfBuffer)
 
@@ -214,25 +175,23 @@ export async function POST(request: NextRequest) {
     whatsappForm.append('is_forwarded', 'false')
     whatsappForm.append('file', fs.createReadStream(filePath), {
       filename: fileName,
-      contentType: 'application/pdf', // ✅ MIME PDF
+      contentType: 'text/plain',
     })
 
     const url = `${whatsappEndpoint.replace(/\/$/, '')}/send/file`
-    
     const whatsappResponse = await axios.post(url, whatsappForm, {
       headers: { ...whatsappForm.getHeaders() },
       auth: { username: whatsappUsername, password: whatsappPassword },
       timeout: 45000,
-      maxContentLength: Infinity,
-      maxBodyLength: Infinity,
       validateStatus: () => true,
     })
 
     if (whatsappResponse.status >= 200 && whatsappResponse.status < 300) {
-      return NextResponse.json({ success: true, message: 'PDF sent successfully', bookingId })
+      return NextResponse.json({ success: true, message: 'File sent', bookingId })
     }
 
-    return NextResponse.json({ success: false, error: 'WA Failed', details: whatsappResponse.data }, { status: 502 })
+    return NextResponse.json({ success: false, error: 'WA Failed' }, { status: 502 })
+
   } catch (error: any) {
     console.error('❌ Error:', error)
     return NextResponse.json({ success: false, error: error?.message }, { status: 500 })
@@ -242,5 +201,6 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
-  return NextResponse.json({ status: 'ready' })
+  return NextResponse.json({ status: 'ready', version: '2.3-no-react-import' })
 }
+
