@@ -5,9 +5,9 @@ import axios from 'axios'
 import { promises as fsp } from 'fs'
 import fs from 'fs'
 
-// Hapus import React-PDF yang menyebabkan MODULE_NOT_FOUND
-// import { renderToBuffer } from '@react-pdf/renderer'
-// import { createElement } from 'react'
+// CATATAN PENTING:
+// Jangan pernah import '@react-pdf/renderer' atau component React 'use client' di sini.
+// Itu akan menyebabkan error MODULE_NOT_FOUND saat deployment.
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -43,7 +43,7 @@ function formatPhoneForWhatsAppJid(phone: string): string {
   return formattedPhone
 }
 
-// === Normalisasi data ===
+// === Normalisasi Data (Hemat & Regular) ===
 function normalizeForPdf(input: AnyFormData): AnyFormData {
   const data = input || {}
 
@@ -53,14 +53,18 @@ function normalizeForPdf(input: AnyFormData): AnyFormData {
     email: data.email ?? '',
     phone_number: data.phone_number ?? data.phoneNumber ?? '',
     whatsapp_number: data.whatsapp_number ?? data.whatsappNumber ?? '',
+    
     address: data.address ?? '',
     city: data.city ?? '',
     province: data.province ?? '',
+
     umrahpackage: data.umrahpackage ?? data.umrah_package ?? data.packageName ?? '',
+
     payment_type: data.payment_type ?? 'tabungan_custom',
     installmentamount: data.installmentamount ?? data.installment_amount ?? '',
     installmentfrequency: data.installmentfrequency ?? data.installment_frequency ?? '',
     installmentnotes: data.installmentnotes ?? data.installment_notes ?? '',
+
     submission_date: data.submission_date ?? data.register_date ?? '',
   }
 }
@@ -77,49 +81,49 @@ function convertLegacyToGeneric(legacyData: LegacyBookingData): AnyFormData {
   }
 }
 
-// === FUNGSI GENERATE PDF SEDERHANA (Server-Side Safe) ===
-// Ini menggantikan React-PDF untuk menghindari error MODULE_NOT_FOUND
+// === GENERATOR PDF SEDERHANA (Server-Safe) ===
+// Fungsi ini menggantikan React-PDF untuk menghindari error import.
+// Menghasilkan file text terformat rapi yang bisa dibuka sebagai konfirmasi.
 async function generateServerPdf(data: AnyFormData, bookingId: string, isHemat: boolean): Promise<Buffer> {
-    // Kita buat PDF text sederhana dulu agar sistem berjalan.
-    // Jika ingin layout visual bagus, nanti bisa install 'pdf-lib' atau 'jspdf' yang aman di server.
-    
     const title = isHemat ? 'KONFIRMASI TABUNGAN UMRAH HEMAT' : 'KONFIRMASI PENDAFTARAN UMRAH'
     const date = new Date().toISOString().split('T')[0]
     
+    // Format Rupiah sederhana
+    const rupiah = (val: any) => 'Rp ' + Number(val || 0).toLocaleString('id-ID')
+
     let content = `
-=========================================
-      ${title}
-=========================================
+==================================================
+           ${title}
+==================================================
 ID Booking    : ${bookingId}
 Tanggal       : ${date}
------------------------------------------
+--------------------------------------------------
 
-DATA JAMAAH:
+DATA JAMAAH
 Nama Lengkap  : ${data.name}
 No. WhatsApp  : ${data.whatsapp_number}
 Email         : ${data.email}
 Domisili      : ${data.city || '-'}, ${data.province || '-'}
 
-PAKET UMRAH:
-Paket Dipilih : ${data.umrahpackage}
+PAKET UMRAH
+Pilihan Paket : ${data.umrahpackage}
 
 ${isHemat ? `
-RENCANA TABUNGAN:
-Nominal Setor : Rp ${Number(data.installmentamount || 0).toLocaleString('id-ID')}
+RENCANA TABUNGAN
+Nominal Setor : ${rupiah(data.installmentamount)}
 Frekuensi     : ${data.installmentfrequency}
 Catatan       : ${data.installmentnotes || '-'}
 ` : `
-PEMBAYARAN:
+PEMBAYARAN
 Metode        : ${data.payment_type || data.payment_method || '-'}
 `}
 
------------------------------------------
+--------------------------------------------------
 Terima kasih telah mendaftar di Rehla Tours.
-Simpan dokumen ini sebagai bukti pendaftaran.
+Silakan simpan dokumen ini sebagai bukti pendaftaran.
 Website: hematumrah.rehlatours.id
-=========================================
+==================================================
 `
-
     return Buffer.from(content, 'utf-8')
 }
 
@@ -139,7 +143,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Phone number is required' }, { status: 400 })
     }
 
-    // Config Check
+    // Cek Config WhatsApp
     const whatsappEndpoint = process.env.WHATSAPP_API_ENDPOINT
     const whatsappUsername = process.env.WHATSAPP_API_USERNAME
     const whatsappPassword = process.env.WHATSAPP_API_PASSWORD
@@ -149,7 +153,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Server configuration error' }, { status: 500 })
     }
 
-    // Parse Data
+    // Parse Data Input
     let parsedData: AnyFormData
     let bookingId: string = bookingIdInput || `HU-${Date.now()}`
 
@@ -169,25 +173,21 @@ export async function POST(request: NextRequest) {
     const pdfData = normalizeForPdf(parsedData)
     const safeBookingId = bookingId.replace(/[^a-zA-Z0-9-_]/g, '')
     
-    // Detect Type
+    // Detect Mode
     const isHemat = bookingId.startsWith('HU-') || pdfData.payment_type === 'tabungan_custom'
-    console.log(`🎯 MODE: ${isHemat ? 'HEMAT' : 'REGULAR'} | ID: ${bookingId}`)
+    console.log(`🎯 PDF GENERATION MODE: ${isHemat ? 'HEMAT' : 'REGULAR'} | ID: ${bookingId}`)
 
-    // ========================================
-    // ✅ FIX: Generate PDF Server-Safe
-    // ========================================
-    // Kita gunakan fungsi internal generateServerPdf alih-alih import component React
+    // ============================================================
+    // ✅ GENERATE FILE (Server-Safe, No React Import Error)
+    // ============================================================
     const pdfBuffer = await generateServerPdf(pdfData, bookingId, isHemat)
     
     // Save Temp File
     const tempDir = '/tmp'
     await fsp.mkdir(tempDir, { recursive: true })
     
-    // Ganti ekstensi jadi .txt dulu jika ingin simple text, atau tetap .pdf jika nanti pakai library PDF
-    // Agar WA terima sebagai dokumen, kita namakan .txt (karena kontennya text plain saat ini)
-    // ATAU: Jika ingin tetap .pdf, konten Buffer harus format PDF valid. 
-    // Untuk solusi cepat tanpa library: Kita kirim file .txt dulu isinya detail pendaftaran.
-    // Nanti Anda bisa install 'pdf-lib' untuk buat PDF beneran di server.
+    // Gunakan ekstensi .txt agar bisa langsung dibuka di WA sebagai dokumen text
+    // (Jika nanti pakai library pdf-lib, ganti jadi .pdf)
     const fileName = `confirmation-${safeBookingId}.txt` 
 
     filePath = path.join(tempDir, fileName)
@@ -208,7 +208,7 @@ export async function POST(request: NextRequest) {
     whatsappForm.append('is_forwarded', 'false')
     whatsappForm.append('file', fs.createReadStream(filePath), {
       filename: fileName,
-      contentType: 'text/plain', // Ubah contentType sesuai file
+      contentType: 'text/plain', // Mime type text plain
     })
 
     const url = `${whatsappEndpoint.replace(/\/$/, '')}/send/file`
@@ -221,25 +221,23 @@ export async function POST(request: NextRequest) {
       timeout: 45000,
       maxContentLength: Infinity,
       maxBodyLength: Infinity,
-      validateStatus: () => true,
+      validateStatus: () => true, // Jangan throw error dulu
     })
 
-    const tookMs = Date.now() - start
-    
-    // Log Detail Response WA
+    // Log Detail Response WA untuk debugging jika masih gagal
     console.log(`📥 WA Response Status: ${whatsappResponse.status}`)
-    // console.log(`📥 WA Body:`, JSON.stringify(whatsappResponse.data).substring(0, 200))
-
+    
     if (whatsappResponse.status >= 200 && whatsappResponse.status < 300) {
       return NextResponse.json({
         success: true,
         message: 'File sent successfully',
         bookingId,
-        whatsappResponse: whatsappResponse.data,
         type: isHemat ? 'hemat' : 'regular'
       })
     }
 
+    // Jika gagal kirim WA
+    console.error(`❌ WA Failed Body:`, JSON.stringify(whatsappResponse.data).substring(0, 500))
     return NextResponse.json(
       {
         success: false,
@@ -249,16 +247,15 @@ export async function POST(request: NextRequest) {
       },
       { status: 502 },
     )
+
   } catch (error: any) {
     console.error('❌ Fatal error:', error?.message || error)
     return NextResponse.json(
-      {
-        success: false,
-        error: error?.message || 'Unknown error',
-      },
+      { success: false, error: error?.message || 'Unknown error' },
       { status: 500 },
     )
   } finally {
+    // Cleanup Temp File
     if (filePath) {
       try {
         await fsp.unlink(filePath)
@@ -270,7 +267,8 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     status: 'ready',
-    version: '2.2-server-safe',
+    version: '2.3-no-react-import',
   })
 }
+
 
