@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { renderToBuffer } from '@react-pdf/renderer'
-import HematConfirmationPDF from '@/components/HematConfirmationPDF' // Import komponen desain Anda
+import HematConfirmationPDF from '@/components/HematConfirmationPDF'
 import FormData from 'form-data'
 import axios from 'axios'
+import React from 'react' // ✅ WAJIB IMPORT REACT
 
-// ⚠️ PENTING: Runtime nodejs wajib untuk generate PDF
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
@@ -57,7 +57,7 @@ function normalizeData(input: AnyFormData): AnyFormData {
     installmentfrequency: data.installmentfrequency ?? data.installment_frequency ?? '',
     installmentnotes: data.installmentnotes ?? data.installment_notes ?? '',
     submission_date: data.submission_date ?? data.register_date ?? new Date().toISOString(),
-    gender: data.gender ?? 'male', // Default jika kosong
+    gender: data.gender ?? 'male',
     place_of_birth: data.place_of_birth ?? '',
     birth_date: data.birth_date ?? '',
   }
@@ -88,7 +88,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Phone required' }, { status: 400 })
     }
 
-    // Config WA
     const whatsappEndpoint = process.env.WHATSAPP_API_ENDPOINT
     const whatsappUsername = process.env.WHATSAPP_API_USERNAME
     const whatsappPassword = process.env.WHATSAPP_API_PASSWORD
@@ -114,10 +113,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Data missing' }, { status: 400 })
     }
 
-    // Siapkan data untuk Props Component
     const normalizedData = normalizeData(parsedData)
     
-    // Mapping ke tipe data yang diminta HematConfirmationPDF
+    // Props untuk PDF
     const pdfProps = {
       formData: {
         name: normalizedData.name,
@@ -140,22 +138,24 @@ export async function POST(request: NextRequest) {
       bookingId: bookingId
     }
 
-    // ✅ GENERATE PDF BUFFER DARI REACT COMPONENT
-    // Kita render component React menjadi buffer PDF binary
-    const pdfBuffer = await renderToBuffer(
-        <HematConfirmationPDF formData={pdfProps.formData} bookingId={pdfProps.bookingId} />
-    )
+    // ✅ FIXED: Gunakan createElement agar valid di file .ts
+    // (Menggantikan <HematConfirmationPDF ... />)
+    const element = React.createElement(HematConfirmationPDF, { 
+      formData: pdfProps.formData, 
+      bookingId: pdfProps.bookingId 
+    })
+    
+    const pdfBuffer = await renderToBuffer(element)
 
     const formattedPhone = formatPhoneForWhatsAppJid(phone)
     const safeBookingId = bookingId.replace(/[^a-zA-Z0-9-_]/g, '')
     const fileName = `confirmation-${safeBookingId}.pdf`
 
-    // Buat Form Data untuk kirim ke WA
     const whatsappForm = new FormData()
     whatsappForm.append('caption', caption)
     whatsappForm.append('phone', formattedPhone)
     whatsappForm.append('is_forwarded', 'false')
-    whatsappForm.append('file', pdfBuffer, { // Kirim Buffer langsung (tanpa simpan ke disk)
+    whatsappForm.append('file', pdfBuffer, { 
       filename: fileName,
       contentType: 'application/pdf',
     })
@@ -166,7 +166,7 @@ export async function POST(request: NextRequest) {
     const whatsappResponse = await axios.post(url, whatsappForm, {
       headers: { ...whatsappForm.getHeaders() },
       auth: { username: whatsappUsername, password: whatsappPassword },
-      timeout: 60000, // Perpanjang timeout karena generate PDF butuh waktu
+      timeout: 60000,
       maxContentLength: Infinity,
       maxBodyLength: Infinity,
       validateStatus: () => true,
@@ -191,5 +191,5 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
-  return NextResponse.json({ status: 'ready', version: '4.0-react-pdf-renderer' })
+  return NextResponse.json({ status: 'ready', version: '4.1-ts-fix' })
 }
