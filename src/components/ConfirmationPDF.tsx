@@ -1,194 +1,206 @@
-'use client'
-import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer'
+import { NextRequest, NextResponse } from 'next/server'
+import FormData from 'form-data'
+import path from 'path'
+import axios from 'axios'
+import { promises as fsp } from 'fs'
+import fs from 'fs'
 
-interface FormData {
-  name: string
+// CATATAN PENTING:
+// Kode ini sengaja TIDAK mengimport komponen React dari src/components
+// untuk menghindari error build di server Next.js App Router.
+// Sebagai gantinya, kita generate file konfirmasi teks sederhana.
+
+export const runtime = 'nodejs'
+export const maxDuration = 60
+
+type AnyFormData = Record<string, any>
+
+interface LegacyBookingData {
+  bookingId: string
+  customerName: string
   email: string
-  phone_number: string
-  whatsapp_number: string
-  umrahpackage: string
-  payment_method?: string
-  payment_type?: string
-  installmentamount?: string | number
-  installmentfrequency?: string
-  booking_id?: string
-  // Kompatibel hemat fields
-  city?: string
-  province?: string
-  address?: string
-  submission_date?: string
+  whatsappNumber: string
+  phoneNumber: string
+  packageName: string
+  paymentMethod: string
 }
 
-const styles = StyleSheet.create({
-  page: {
-    flexDirection: 'column',
-    backgroundColor: '#FFFFFF',
-    padding: 40,
-    fontSize: 12,
-  },
-  header: {
-    textAlign: 'center',
-    marginBottom: 30,
-    paddingBottom: 20,
-    borderBottom: '2px solid #1976D2',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1976D2',
-    marginBottom: 10,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 5,
-  },
-  bookingId: {
-    fontSize: 14,
-    color: '#1976D2',
-    fontWeight: 'bold',
-  },
-  section: {
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1976D2',
-    marginBottom: 10,
-    textDecoration: 'underline',
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-    padding: '5px 0',
-  },
-  label: { fontWeight: 600, color: '#333', width: '40%' },
-  value: { color: '#000', width: '55%', textAlign: 'right' },
-  paymentBox: {
-    backgroundColor: '#E3F2FD',
-    padding: 15,
-    borderRadius: 8,
-    border: '2px solid #2196F3',
-    marginVertical: 15,
-  },
-  paymentTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1976D2',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  amount: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1976D2',
-  },
-  footer: {
-    marginTop: 40,
-    paddingTop: 20,
-    borderTop: '1px solid #DDD',
-    textAlign: 'center',
-    fontSize: 10,
-    color: '#888',
-  },
-})
-
-export default function ConfirmationPDF({
-  formData,
-  bookingId,
-}: {
-  formData: FormData
-  bookingId?: string
-}) {
-  // Kompatibel hemat/regular
-  const isHemat = formData.payment_type === 'tabungan_custom' || bookingId?.startsWith('HU-')
-  const paymentTitle = isHemat 
-    ? 'Rencana Tabungan' 
-    : 'Metode Pembayaran'
-  
-  const paymentMethod = formData.payment_method || formData.payment_type || 'Belum ditentukan'
-  const amount = formData.installmentamount || '0'
-  
-  const formatRupiah = (amount: number | string) => {
-    return `Rp ${Number(amount)
-      .toLocaleString('id-ID')
-      .replace(/,/g, '.')}`
+function safeJsonParse<T>(
+  value: string,
+  label: string,
+): { ok: true; data: T } | { ok: false; error: string } {
+  try {
+    return { ok: true, data: JSON.parse(value) as T }
+  } catch {
+    return { ok: false, error: `Invalid ${label} format` }
   }
-
-  return (
-    <Document>
-      <Page size="A4" style={styles.page}>
-        {/* HEADER */}
-        <View style={styles.header}>
-          <Text style={styles.title}>✈️ KONFIRMASI PENDAFTARAN UMRAH</Text>
-          <Text style={styles.subtitle}>
-            {isHemat ? 'Program Tabungan Hemat' : 'Pendaftaran Langsung'}
-          </Text>
-          {bookingId && (
-            <Text style={styles.bookingId}>ID Booking: {bookingId}</Text>
-          )}
-        </View>
-
-        {/* IDENTITAS */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>1. DATA PELANGGAN</Text>
-          <View style={styles.row}>
-            <Text style={styles.label}>Nama Lengkap:</Text>
-            <Text style={styles.value}>{formData.name}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.label}>Email:</Text>
-            <Text style={styles.value}>{formData.email}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.label}>WhatsApp:</Text>
-            <Text style={styles.value}>{formData.whatsapp_number}</Text>
-          </View>
-          {formData.city && (
-            <View style={styles.row}>
-              <Text style={styles.label}>Lokasi:</Text>
-              <Text style={styles.value}>{`${formData.city}, ${formData.province}`}</Text>
-            </View>
-          )}
-        </View>
-
-        {/* PAKET */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>2. PAKET UMRAH</Text>
-          <View style={styles.row}>
-            <Text style={styles.label}>Paket Dipilih:</Text>
-            <Text style={styles.value}>{formData.umrahpackage}</Text>
-          </View>
-        </View>
-
-        {/* PEMBAYARAN - UNIVERSAL */}
-        <View style={styles.paymentBox}>
-          <Text style={styles.paymentTitle}>💳 {paymentTitle}</Text>
-          <View style={styles.row}>
-            <Text style={styles.label}>Metode:</Text>
-            <Text style={styles.value}>{paymentMethod}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.label}>Nominal:</Text>
-            <Text style={[styles.value, styles.amount]}>
-              {formatRupiah(amount)}
-            </Text>
-          </View>
-        </View>
-
-        {/* FOOTER */}
-        <View style={styles.footer}>
-          <Text>Tanggal: {formData.submission_date?.slice(0, 10) || new Date().toISOString().slice(0, 10)}</Text>
-          <Text>
-            Terima kasih telah mempercayakan perjalanan ibadah Anda kepada Rehla Tours.
-          </Text>
-          <Text style={{ marginTop: 10 }}>
-            Rehla Tours | umrah.rehlatours.id | WhatsApp: 62xxxxxxxxx
-          </Text>
-        </View>
-      </Page>
-    </Document>
-  )
 }
+
+function formatPhoneForWhatsAppJid(phone: string): string {
+  let formattedPhone = (phone || '').replace(/\D/g, '')
+  if (formattedPhone.startsWith('0')) formattedPhone = '62' + formattedPhone.slice(1)
+  if (formattedPhone && !formattedPhone.startsWith('62')) formattedPhone = '62' + formattedPhone
+  if (formattedPhone && !formattedPhone.includes('@')) formattedPhone += '@s.whatsapp.net'
+  return formattedPhone
+}
+
+// === Normalisasi Data ===
+function normalizeForPdf(input: AnyFormData): AnyFormData {
+  const data = input || {}
+  return {
+    ...data,
+    name: data.name ?? data.customerName ?? '',
+    email: data.email ?? '',
+    phone_number: data.phone_number ?? data.phoneNumber ?? '',
+    whatsapp_number: data.whatsapp_number ?? data.whatsappNumber ?? '',
+    address: data.address ?? '',
+    city: data.city ?? '',
+    province: data.province ?? '',
+    umrahpackage: data.umrahpackage ?? data.umrah_package ?? data.packageName ?? '',
+    payment_type: data.payment_type ?? 'tabungan_custom',
+    installmentamount: data.installmentamount ?? data.installment_amount ?? '',
+    installmentfrequency: data.installmentfrequency ?? data.installment_frequency ?? '',
+    installmentnotes: data.installmentnotes ?? data.installment_notes ?? '',
+    submission_date: data.submission_date ?? data.register_date ?? '',
+  }
+}
+
+function convertLegacyToGeneric(legacyData: LegacyBookingData): AnyFormData {
+  return {
+    name: legacyData.customerName || '',
+    email: legacyData.email || '',
+    whatsapp_number: legacyData.whatsappNumber || '',
+    phone_number: legacyData.phoneNumber || '',
+    umrahpackage: legacyData.packageName || '',
+    payment_method: legacyData.paymentMethod || '',
+    terms_of_service: true,
+  }
+}
+
+// === GENERATOR FILE TEKS (Server-Safe) ===
+async function generateServerPdf(data: AnyFormData, bookingId: string, isHemat: boolean): Promise<Buffer> {
+    const title = isHemat ? 'KONFIRMASI TABUNGAN UMRAH HEMAT' : 'KONFIRMASI PENDAFTARAN UMRAH'
+    const date = new Date().toISOString().split('T')[0]
+    const rupiah = (val: any) => 'Rp ' + Number(val || 0).toLocaleString('id-ID')
+
+    // Template Text Rapi
+    let content = `
+==================================================
+           ${title}
+==================================================
+ID Booking    : ${bookingId}
+Tanggal       : ${date}
+--------------------------------------------------
+
+DATA JAMAAH
+Nama Lengkap  : ${data.name}
+No. WhatsApp  : ${data.whatsapp_number}
+Email         : ${data.email}
+Domisili      : ${data.city || '-'}, ${data.province || '-'}
+
+PAKET UMRAH
+Pilihan Paket : ${data.umrahpackage}
+
+${isHemat ? `
+RENCANA TABUNGAN
+Nominal Setor : ${rupiah(data.installmentamount)}
+Frekuensi     : ${data.installmentfrequency}
+Catatan       : ${data.installmentnotes || '-'}
+` : `
+PEMBAYARAN
+Metode        : ${data.payment_type || data.payment_method || '-'}
+`}
+
+--------------------------------------------------
+Terima kasih telah mendaftar di Rehla Tours.
+Simpan dokumen ini sebagai bukti pendaftaran.
+Website: hematumrah.rehlatours.id
+==================================================
+`
+    return Buffer.from(content, 'utf-8')
+}
+
+export async function POST(request: NextRequest) {
+  let filePath: string | null = null
+
+  try {
+    const formData = await request.formData()
+    const phone = (formData.get('phone') as string | null)?.trim() || ''
+    const bookingIdInput = (formData.get('bookingId') as string | null)?.trim()
+    const umrahFormDataJson = (formData.get('umrahFormData') as string | null)?.trim()
+    const bookingDataJson = (formData.get('bookingData') as string | null)?.trim()
+    const caption = ((formData.get('caption') as string | null) ?? '') || 'Konfirmasi Pendaftaran'
+
+    if (!phone) return NextResponse.json({ success: false, error: 'Phone required' }, { status: 400 })
+
+    const whatsappEndpoint = process.env.WHATSAPP_API_ENDPOINT
+    const whatsappUsername = process.env.WHATSAPP_API_USERNAME
+    const whatsappPassword = process.env.WHATSAPP_API_PASSWORD
+
+    if (!whatsappEndpoint || !whatsappUsername || !whatsappPassword) {
+      return NextResponse.json({ success: false, error: 'Config missing' }, { status: 500 })
+    }
+
+    let parsedData: AnyFormData
+    let bookingId: string = bookingIdInput || `HU-${Date.now()}`
+
+    if (umrahFormDataJson) {
+      const parsed = safeJsonParse<AnyFormData>(umrahFormDataJson, 'umrahFormData')
+      parsedData = parsed.ok ? parsed.data : {}
+    } else if (bookingDataJson) {
+      const parsed = safeJsonParse<LegacyBookingData>(bookingDataJson, 'bookingData')
+      parsedData = parsed.ok ? convertLegacyToGeneric(parsed.data) : {}
+      if (parsed.ok) bookingId = parsed.data.bookingId || bookingId
+    } else {
+      return NextResponse.json({ success: false, error: 'Data missing' }, { status: 400 })
+    }
+
+    const pdfData = normalizeForPdf(parsedData)
+    const safeBookingId = bookingId.replace(/[^a-zA-Z0-9-_]/g, '')
+    const isHemat = bookingId.startsWith('HU-') || pdfData.payment_type === 'tabungan_custom'
+
+    // ✅ GENERATE FILE TXT
+    const pdfBuffer = await generateServerPdf(pdfData, bookingId, isHemat)
+    
+    const tempDir = '/tmp'
+    await fsp.mkdir(tempDir, { recursive: true })
+    const fileName = `confirmation-${safeBookingId}.txt` // Ekstensi .txt
+    filePath = path.join(tempDir, fileName)
+    await fsp.writeFile(filePath, pdfBuffer)
+
+    const formattedPhone = formatPhoneForWhatsAppJid(phone)
+    const whatsappForm = new FormData()
+    whatsappForm.append('caption', caption)
+    whatsappForm.append('phone', formattedPhone)
+    whatsappForm.append('is_forwarded', 'false')
+    whatsappForm.append('file', fs.createReadStream(filePath), {
+      filename: fileName,
+      contentType: 'text/plain',
+    })
+
+    const url = `${whatsappEndpoint.replace(/\/$/, '')}/send/file`
+    const whatsappResponse = await axios.post(url, whatsappForm, {
+      headers: { ...whatsappForm.getHeaders() },
+      auth: { username: whatsappUsername, password: whatsappPassword },
+      timeout: 45000,
+      validateStatus: () => true,
+    })
+
+    if (whatsappResponse.status >= 200 && whatsappResponse.status < 300) {
+      return NextResponse.json({ success: true, message: 'File sent', bookingId })
+    }
+
+    return NextResponse.json({ success: false, error: 'WA Failed' }, { status: 502 })
+
+  } catch (error: any) {
+    console.error('❌ Error:', error)
+    return NextResponse.json({ success: false, error: error?.message }, { status: 500 })
+  } finally {
+    if (filePath) await fsp.unlink(filePath).catch(() => {})
+  }
+}
+
+export async function GET() {
+  return NextResponse.json({ status: 'ready', version: '2.3-no-react-import' })
+}
+
