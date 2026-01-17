@@ -168,48 +168,63 @@ function buildCleanDataHemat(formData: any) {
   return {
     // --- Identitas Utama ---
     name: safeString(formData.name),
-    niknumber: safeString(formData.niknumber), // UI: niknumber
+    // 🔥 FIX: formData.nik_number (dari UI), bukan formData.niknumber
+    niknumber: safeString(formData.nik_number || formData.niknumber), 
     gender: safeString(formData.gender),
-    place_of_birth: safeString(formData.place_of_birth), // UI: placeofbirth
+    place_of_birth: safeString(formData.place_of_birth), 
     birth_date: safeDate(formData.birth_date),
-    mariagestatus: safeString(formData.mariagestatus),
+    // 🔥 FIX: formData.mariage_status (dari UI)
+    mariagestatus: safeString(formData.mariage_status || formData.mariagestatus),
     occupation: safeString(formData.occupation),
 
     // --- Keluarga / Orang Tua ---
-    fathername: safeString(formData.fathername),
-    mothername: safeString(formData.mothername),
+    // 🔥 FIX: formData.father_name (dari UI)
+    fathername: safeString(formData.father_name || formData.fathername),
+    // 🔥 FIX: formData.mother_name (dari UI)
+    mothername: safeString(formData.mother_name || formData.mothername),
 
     // --- Kontak ---
     email: safeString(formData.email),
-    phone_number: safeString(formData.phone_number), // UI: phonenumber
-    whatsapp_number: safeString(formData.whatsapp_number), // UI: whatsappnumber
+    phone_number: safeString(formData.phone_number), 
+    whatsapp_number: safeString(formData.whatsapp_number), 
     
     // --- Alamat ---
     address: safeString(formData.address),
     city: safeString(formData.city),
     province: safeString(formData.province),
-    postalcode: safeString(formData.postalcode),
+    // 🔥 FIX: formData.postal_code (dari UI)
+    postalcode: safeString(formData.postal_code || formData.postalcode),
 
     // --- Kontak Darurat ---
-    emergencycontactname: safeString(formData.emergencycontactname),
-    emergencycontactphone: safeString(formData.emergencycontactphone),
+    // 🔥 FIX: formData.emergency_contact_name (dari UI)
+    emergencycontactname: safeString(formData.emergency_contact_name || formData.emergencycontactname),
+    // 🔥 FIX: formData.emergency_contact_phone (dari UI)
+    emergencycontactphone: safeString(formData.emergency_contact_phone || formData.emergencycontactphone),
     relationship: safeString(formData.relationship),
 
     // --- Dokumen Paspor ---
-    passportnumber: safeString(formData.passportnumber),
-    dateofissue: safeDate(formData.dateofissue),
-    expirydate: safeDate(formData.expirydate),
-    placeofissue: safeString(formData.placeofissue),
+    // 🔥 FIX: formData.passport_number (dari UI)
+    passportnumber: safeString(formData.passport_number || formData.passportnumber),
+    // 🔥 FIX: formData.date_of_issue (dari UI)
+    dateofissue: safeDate(formData.date_of_issue || formData.dateofissue),
+    // 🔥 FIX: formData.expiry_date (dari UI)
+    expirydate: safeDate(formData.expiry_date || formData.expirydate),
+    // 🔥 FIX: formData.place_of_issue (dari UI)
+    placeofissue: safeString(formData.place_of_issue || formData.placeofissue),
 
     // --- Kesehatan ---
-    specificdisease: safeBoolean(formData.specificdisease),
-    illness: safeString(formData.illness), // Penjelasan penyakit
-    specialneeds: safeBoolean(formData.specialneeds),
+    // 🔥 FIX: formData.specific_disease (dari UI)
+    specificdisease: safeBoolean(formData.specific_disease || formData.specificdisease),
+    illness: safeString(formData.illness), 
+    // 🔥 FIX: formData.special_needs (dari UI)
+    specialneeds: safeBoolean(formData.special_needs || formData.specialneeds),
     wheelchair: safeBoolean(formData.wheelchair),
 
     // --- Pengalaman Ibadah ---
-    hasperformedumrah: safeBoolean(formData.hasperformedumrah),
-    hasperformedhajj: safeBoolean(formData.hasperformedhajj),
+    // 🔥 FIX: formData.has_performed_umrah (dari UI)
+    hasperformedumrah: safeBoolean(formData.has_performed_umrah || formData.hasperformedumrah),
+    // 🔥 FIX: formData.has_performed_hajj (dari UI)
+    hasperformedhajj: safeBoolean(formData.has_performed_hajj || formData.hasperformedhajj),
 
     // --- Paket & Pembayaran (Tabungan) ---
     // Note: 'umrahpackage' di DB Payload biasanya expect ID relasi
@@ -218,12 +233,14 @@ function buildCleanDataHemat(formData: any) {
     payment_type: 'tabungan_custom',
     installmentamount: safeNumber(formData.installment_amount),
     installmentfrequency: safeString(formData.installment_frequency) || 'flexible',
-    installmentnotes: safeString(formData.installment_notes),
+    // 🔥 FIX: formData.installment_notes (dari UI)
+    installmentnotes: safeString(formData.installment_notes || formData.installmentnotes),
 
     // --- Meta ---
-    registerdate: safeDate(formData.register_date) || new Date().toISOString(), // UI: registerdate
+    registerdate: safeDate(formData.register_date) || new Date().toISOString(), 
     submission_date: new Date().toISOString(),
-    termsofservice: safeBoolean(formData.termsofservice),
+    // 🔥 FIX: formData.terms_of_service (dari UI)
+    termsofservice: safeBoolean(formData.terms_of_service || formData.termsofservice),
     status: 'pending_review',
   }
 }
