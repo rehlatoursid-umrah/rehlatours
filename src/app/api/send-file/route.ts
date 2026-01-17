@@ -31,10 +31,22 @@ function formatPhoneForWhatsAppJid(phone: string): string {
   return formattedPhone
 }
 
-// === 3. FUNGSI MAPPER PENTING (PENERJEMAH DATA) ===
-// Fungsi ini mengubah data mentah dari form (snake_case) menjadi data matang untuk PDF (camelCase)
+// === 3. FUNGSI MAPPER (PENERJEMAH DATA CERDAS) ===
+// Helper 'pick': Cari nilai dari beberapa kemungkinan key.
+// Contoh: pick(data, ['nik_number', 'niknumber']) -> akan cari 'nik_number' dulu, kalau kosong cari 'niknumber'
+const pick = (obj: any, keys: string[], fallback: any = '-') => {
+  for (const k of keys) {
+    const v = obj?.[k]
+    // Cek jika ada isinya (tidak null/undefined/string kosong)
+    if (v !== undefined && v !== null && v !== '') return v
+  }
+  return fallback
+}
+
 function mapToPdfFormat(data: AnyFormData) {
-  const toDateStr = (d?: string | Date) => {
+  const toDateStr = (val: any) => {
+    // Ambil value pakai pick dulu
+    const d = typeof val === 'object' ? val : pick(data, Array.isArray(val) ? val : [val], null)
     if (!d) return '-'
     try {
       return new Date(d).toISOString()
@@ -44,68 +56,68 @@ function mapToPdfFormat(data: AnyFormData) {
   }
 
   // Mapping Frekuensi
+  const freqRaw = pick(data, ['installment_frequency', 'installmentfrequency'], '')
   const freqMap: Record<string, string> = {
     daily: 'Harian',
     weekly: 'Mingguan',
     monthly: 'Bulanan',
     flexible: 'Fleksibel'
   }
+  const frekuensiBersih = freqMap[freqRaw] || freqRaw || '-'
 
-  // Mapping Paket (Simple Logic - bisa disesuaikan jika ada lookup)
-  // Karena form mengirim ID paket, kita coba tampilkan ID-nya atau default
-  // Jika Anda mengirim nama paket dari frontend, ganti 'data.package_name' di bawah
-  const paketTitle = data.package_name || data.umrah_package || 'Paket Umrah Hemat'
+  // Mapping Paket 
+  const paketTitle = pick(data, ['package_name', 'umrah_package', 'umrahpackage'], 'Paket Umrah Hemat')
 
   return {
-    // Data Pribadi
-    namaLengkap: data.name || data.customerName || '-',
+    // --- Data Pribadi ---
+    namaLengkap: pick(data, ['name', 'customerName', 'namaLengkap']),
     jenisKelamin: data.gender === 'male' ? 'Laki-laki' : data.gender === 'female' ? 'Perempuan' : '-',
-    tempatLahir: data.place_of_birth || '-',
-    tglLahir: toDateStr(data.birth_date),
-    namaAyah: data.father_name || '-',
-    namaIbu: data.mother_name || '-',
-    statusPernikahan: data.mariage_status || '-',
-    pekerjaan: data.occupation || '-',
+    tempatLahir: pick(data, ['place_of_birth', 'placeofbirth', 'tempatLahir']),
+    tglLahir: toDateStr(['birth_date', 'birthdate', 'tglLahir']),
+    namaAyah: pick(data, ['father_name', 'fathername', 'namaAyah']),
+    namaIbu: pick(data, ['mother_name', 'mothername', 'namaIbu']),
+    statusPernikahan: pick(data, ['mariage_status', 'mariagestatus', 'statusPernikahan']),
+    pekerjaan: pick(data, ['occupation', 'pekerjaan']),
     
-    // Kontak
-    email: data.email || '-',
-    nomorTelepon: data.phone_number || data.phoneNumber || '-',
-    whatsapp: data.whatsapp_number || data.whatsappNumber || '-',
-    alamatLengkap: data.address || '-',
-    kota: data.city || '-',
-    provinsi: data.province || '-',
-    kodePos: data.postal_code || '-',
+    // --- Kontak ---
+    email: pick(data, ['email']),
+    nomorTelepon: pick(data, ['phone_number', 'phoneNumber', 'nomorTelepon']),
+    whatsapp: pick(data, ['whatsapp_number', 'whatsappNumber', 'whatsapp']),
+    alamatLengkap: pick(data, ['address', 'alamatLengkap']),
+    kota: pick(data, ['city', 'kota']),
+    provinsi: pick(data, ['province', 'provinsi']),
+    kodePos: pick(data, ['postal_code', 'postalcode', 'kodePos']),
     
-    // Kontak Darurat
-    namaKontakDarurat: data.emergency_contact_name || '-',
-    hubunganKontak: data.relationship || '-',
-    telpKontakDarurat: data.emergency_contact_phone || '-',
+    // --- Kontak Darurat ---
+    namaKontakDarurat: pick(data, ['emergency_contact_name', 'emergencycontactname', 'namaKontakDarurat']),
+    hubunganKontak: pick(data, ['relationship', 'hubunganKontak']),
+    telpKontakDarurat: pick(data, ['emergency_contact_phone', 'emergencycontactphone', 'telpKontakDarurat']),
     
-    // Dokumen
-    nik: data.nik_number || '-',
-    nomorPaspor: data.passport_number || '-',
-    tglPenerbitanPaspor: toDateStr(data.date_of_issue),
-    tglKadaluarsaPaspor: toDateStr(data.expiry_date),
-    tempatPenerbitanPaspor: data.place_of_issue || '-',
+    // --- Dokumen ---
+    nik: pick(data, ['nik_number', 'niknumber', 'nik']),
+    nomorPaspor: pick(data, ['passport_number', 'passportnumber', 'nomorPaspor']),
+    tglPenerbitanPaspor: toDateStr(['date_of_issue', 'dateofissue']),
+    tglKadaluarsaPaspor: toDateStr(['expiry_date', 'expirydate']),
+    tempatPenerbitanPaspor: pick(data, ['place_of_issue', 'placeofissue']),
     
-    // Kesehatan
-    memilikiPenyakit: Boolean(data.specific_disease),
-    detailPenyakit: data.illness || '-',
-    kebutuhanKhusus: Boolean(data.special_needs),
-    butuhKursiRoda: Boolean(data.wheelchair),
+    // --- Kesehatan ---
+    memilikiPenyakit: Boolean(pick(data, ['specific_disease', 'specificdisease'], false)),
+    detailPenyakit: pick(data, ['illness', 'detailPenyakit']),
+    kebutuhanKhusus: Boolean(pick(data, ['special_needs', 'specialneeds'], false)),
+    butuhKursiRoda: Boolean(pick(data, ['wheelchair', 'butuhKursiRoda'], false)),
     
-    // Pengalaman
-    pernahUmrah: Boolean(data.has_performed_umrah),
-    pernahHaji: Boolean(data.has_performed_hajj),
+    // --- Pengalaman ---
+    pernahUmrah: Boolean(pick(data, ['has_performed_umrah', 'hasperformedumrah'], false)),
+    pernahHaji: Boolean(pick(data, ['has_performed_hajj', 'hasperformedhajj'], false)),
     
-    // Paket & Pembayaran
+    // --- Paket & Pembayaran ---
     paketUmrah: paketTitle,
-    hargaPaket: 0, // Harga tidak dikirim dari form, set 0 atau sesuaikan
+    hargaPaket: 0, 
     metodePembayaran: 'Tabungan Umrah',
-    rencanaSetoran: Number(data.installment_amount) || 0,
-    frekuensiSetoran: data.installment_frequency ? (freqMap[data.installment_frequency] || data.installment_frequency) : '-',
-    catatanTabungan: data.installment_notes || '-',
-    tglPendaftaran: toDateStr(data.register_date || data.submission_date || new Date())
+    rencanaSetoran: Number(pick(data, ['installment_amount', 'installmentamount'], 0)),
+    frekuensiSetoran: frekuensiBersih,
+    catatanTabungan: pick(data, ['installment_notes', 'installmentnotes']),
+    tglPendaftaran: toDateStr(['register_date', 'registerdate', 'submission_date'])
   }
 }
 
@@ -153,16 +165,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Data missing' }, { status: 400 })
     }
 
-    // 🔥 VITAL STEP: Lakukan Mapping Data Sebelum Render PDF 🔥
-    // Ini yang memperbaiki masalah data kosong "-"
+    // 🔥 MAPPING DATA: Mencari value dari berbagai kemungkinan key (snake_case atau lowercase)
     const pdfData = mapToPdfFormat(rawData)
     
-    // Debug Log (Cek di Vercel Logs apakah data sudah benar)
-    console.log('📝 PDF Data Mapped:', JSON.stringify(pdfData, null, 2))
+    // Debug Log (PENTING: Cek log ini jika masih ada strip '-')
+    console.log('📝 PDF Data Mapped (FINAL):', JSON.stringify(pdfData, null, 2))
 
-    // Render PDF dengan React.createElement
+    // Render PDF
     const element = React.createElement(HematConfirmationPDF, { 
-      formData: pdfData,  // Kirim data yang SUDAH dimapping
+      formData: pdfData,  
       bookingId: bookingId 
     })
     
@@ -213,5 +224,6 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
-  return NextResponse.json({ status: 'ready', version: '4.2-data-fix' })
+  return NextResponse.json({ status: 'ready', version: '5.0-smart-mapping' })
 }
+
