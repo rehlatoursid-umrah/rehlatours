@@ -8,10 +8,9 @@ import React from 'react'
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
-// === 1. DEFINISI TIPE DATA ===
 type AnyFormData = Record<string, any>
 
-// === 2. HELPER FUNCTIONS ===
+// === HELPER FUNCTIONS ===
 function safeJsonParse<T>(
   value: string,
   label: string,
@@ -31,109 +30,98 @@ function formatPhoneForWhatsAppJid(phone: string): string {
   return formattedPhone
 }
 
-// === 3. FUNGSI MAPPER (PENERJEMAH DATA CERDAS) ===
 const pick = (obj: any, keys: string[], fallback: any = '-') => {
+  if (!obj) return fallback
   for (const k of keys) {
-    const v = obj?.[k]
+    const v = obj[k]
     if (v !== undefined && v !== null && v !== '') return v
   }
   return fallback
 }
 
+// === MAPPER DENGAN ERROR HANDLING KUAT ===
 function mapToPdfFormat(data: AnyFormData) {
-  // 🔥 FIX DATE: Helper tanggal yang lebih kuat
+  // Helper Date yang sangat aman
   const toDateStr = (keys: string | string[]) => {
-    // 1. Ambil raw value menggunakan pick
-    const keyList = Array.isArray(keys) ? keys : [keys]
-    const rawVal = pick(data, keyList, null)
-    
-    // 2. Jika kosong, return null (nanti jadi '-')
-    if (!rawVal) return '-'
-
     try {
-      // 3. Coba bikin object Date
-      const dateObj = new Date(rawVal)
+      const keyList = Array.isArray(keys) ? keys : [keys]
+      const rawVal = pick(data, keyList, null)
       
-      // 4. Cek validitas date
-      if (isNaN(dateObj.getTime())) return '-'
+      if (!rawVal) return '-'
       
-      // 5. Return ISO string agar konsisten dibaca helper format di PDF
-      return dateObj.toISOString()
-    } catch {
-      return '-'
+      // Cek apakah sudah string ISO/Date?
+      const d = new Date(rawVal)
+      if (isNaN(d.getTime())) return '-' // Invalid date
+      
+      return d.toISOString() // Pasti return string ISO valid
+    } catch (e) {
+      console.error('Error parsing date:', e)
+      return '-' // Fallback aman
     }
   }
 
-  // Mapping Frekuensi
-  const freqRaw = pick(data, ['installment_frequency', 'installmentfrequency'], '')
-  const freqMap: Record<string, string> = {
-    daily: 'Harian',
-    weekly: 'Mingguan',
-    monthly: 'Bulanan',
-    flexible: 'Fleksibel'
-  }
-  const frekuensiBersih = freqMap[freqRaw] || freqRaw || '-'
-
-  // Mapping Paket 
-  const paketTitle = pick(data, ['package_name', 'umrah_package', 'umrahpackage'], 'Paket Umrah Hemat')
+  // Helper Frekuensi aman
+  let frekuensiBersih = '-'
+  try {
+    const freqRaw = pick(data, ['installment_frequency', 'installmentfrequency'], '')
+    const freqMap: Record<string, string> = {
+      daily: 'Harian',
+      weekly: 'Mingguan',
+      monthly: 'Bulanan',
+      flexible: 'Fleksibel'
+    }
+    frekuensiBersih = freqMap[freqRaw] || freqRaw || '-'
+  } catch {}
 
   return {
-    // --- Data Pribadi ---
-    namaLengkap: pick(data, ['name', 'customerName', 'namaLengkap']),
+    // Data Pribadi
+    namaLengkap: pick(data, ['name', 'customerName', 'namaLengkap'], '-'),
     jenisKelamin: data.gender === 'male' ? 'Laki-laki' : data.gender === 'female' ? 'Perempuan' : '-',
-    tempatLahir: pick(data, ['place_of_birth', 'placeofbirth', 'tempatLahir']),
-    
-    // 🔥 Panggil toDateStr dengan list kemungkinan key
+    tempatLahir: pick(data, ['place_of_birth', 'placeofbirth', 'tempatLahir'], '-'),
     tglLahir: toDateStr(['birth_date', 'birthdate', 'tglLahir']),
+    namaAyah: pick(data, ['father_name', 'fathername', 'namaAyah'], '-'),
+    namaIbu: pick(data, ['mother_name', 'mothername', 'namaIbu'], '-'),
+    statusPernikahan: pick(data, ['mariage_status', 'mariagestatus', 'statusPernikahan'], '-'),
+    pekerjaan: pick(data, ['occupation', 'pekerjaan'], '-'),
     
-    namaAyah: pick(data, ['father_name', 'fathername', 'namaAyah']),
-    namaIbu: pick(data, ['mother_name', 'mothername', 'namaIbu']),
-    statusPernikahan: pick(data, ['mariage_status', 'mariagestatus', 'statusPernikahan']),
-    pekerjaan: pick(data, ['occupation', 'pekerjaan']),
+    // Kontak
+    email: pick(data, ['email'], '-'),
+    nomorTelepon: pick(data, ['phone_number', 'phoneNumber', 'nomorTelepon'], '-'),
+    whatsapp: pick(data, ['whatsapp_number', 'whatsappNumber', 'whatsapp'], '-'),
+    alamatLengkap: pick(data, ['address', 'alamatLengkap'], '-'),
+    kota: pick(data, ['city', 'kota'], '-'),
+    provinsi: pick(data, ['province', 'provinsi'], '-'),
+    kodePos: pick(data, ['postal_code', 'postalcode', 'kodePos'], '-'),
     
-    // --- Kontak ---
-    email: pick(data, ['email']),
-    nomorTelepon: pick(data, ['phone_number', 'phoneNumber', 'nomorTelepon']),
-    whatsapp: pick(data, ['whatsapp_number', 'whatsappNumber', 'whatsapp']),
-    alamatLengkap: pick(data, ['address', 'alamatLengkap']),
-    kota: pick(data, ['city', 'kota']),
-    provinsi: pick(data, ['province', 'provinsi']),
-    kodePos: pick(data, ['postal_code', 'postalcode', 'kodePos']),
+    // Kontak Darurat
+    namaKontakDarurat: pick(data, ['emergency_contact_name', 'emergencycontactname', 'namaKontakDarurat'], '-'),
+    hubunganKontak: pick(data, ['relationship', 'hubunganKontak'], '-'),
+    telpKontakDarurat: pick(data, ['emergency_contact_phone', 'emergencycontactphone', 'telpKontakDarurat'], '-'),
     
-    // --- Kontak Darurat ---
-    namaKontakDarurat: pick(data, ['emergency_contact_name', 'emergencycontactname', 'namaKontakDarurat']),
-    hubunganKontak: pick(data, ['relationship', 'hubunganKontak']),
-    telpKontakDarurat: pick(data, ['emergency_contact_phone', 'emergencycontactphone', 'telpKontakDarurat']),
-    
-    // --- Dokumen ---
-    nik: pick(data, ['nik_number', 'niknumber', 'nik']),
-    nomorPaspor: pick(data, ['passport_number', 'passportnumber', 'nomorPaspor']),
-    
-    // 🔥 Panggil toDateStr untuk paspor
+    // Dokumen
+    nik: pick(data, ['nik_number', 'niknumber', 'nik'], '-'),
+    nomorPaspor: pick(data, ['passport_number', 'passportnumber', 'nomorPaspor'], '-'),
     tglPenerbitanPaspor: toDateStr(['date_of_issue', 'dateofissue']),
     tglKadaluarsaPaspor: toDateStr(['expiry_date', 'expirydate']),
+    tempatPenerbitanPaspor: pick(data, ['place_of_issue', 'placeofissue'], '-'),
     
-    tempatPenerbitanPaspor: pick(data, ['place_of_issue', 'placeofissue']),
-    
-    // --- Kesehatan ---
+    // Kesehatan
     memilikiPenyakit: Boolean(pick(data, ['specific_disease', 'specificdisease'], false)),
-    detailPenyakit: pick(data, ['illness', 'detailPenyakit']),
+    detailPenyakit: pick(data, ['illness', 'detailPenyakit'], '-'),
     kebutuhanKhusus: Boolean(pick(data, ['special_needs', 'specialneeds'], false)),
     butuhKursiRoda: Boolean(pick(data, ['wheelchair', 'butuhKursiRoda'], false)),
     
-    // --- Pengalaman ---
+    // Pengalaman
     pernahUmrah: Boolean(pick(data, ['has_performed_umrah', 'hasperformedumrah'], false)),
     pernahHaji: Boolean(pick(data, ['has_performed_hajj', 'hasperformedhajj'], false)),
     
-    // --- Paket & Pembayaran ---
-    paketUmrah: paketTitle,
-    hargaPaket: 0, 
+    // Paket
+    paketUmrah: pick(data, ['package_name', 'umrah_package', 'umrahpackage'], 'Paket Umrah Hemat'),
+    hargaPaket: 0,
     metodePembayaran: 'Tabungan Umrah',
-    rencanaSetoran: Number(pick(data, ['installment_amount', 'installmentamount'], 0)),
+    rencanaSetoran: Number(pick(data, ['installment_amount', 'installmentamount'], 0)) || 0,
     frekuensiSetoran: frekuensiBersih,
-    catatanTabungan: pick(data, ['installment_notes', 'installmentnotes']),
-    
-    // 🔥 Panggil toDateStr untuk tanggal daftar
+    catatanTabungan: pick(data, ['installment_notes', 'installmentnotes'], '-'),
     tglPendaftaran: toDateStr(['register_date', 'registerdate', 'submission_date'])
   }
 }
@@ -143,16 +131,14 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
     
-    // Ambil field dasar
     const phone = (formData.get('phone') as string | null)?.trim() || ''
     const bookingIdInput = (formData.get('bookingId') as string | null)?.trim()
     const caption = ((formData.get('caption') as string | null) ?? '') || 'Konfirmasi Pendaftaran'
-
-    // Ambil JSON Data
     const umrahFormDataJson = (formData.get('umrahFormData') as string | null)?.trim()
     const bookingDataJson = (formData.get('bookingData') as string | null)?.trim()
 
     if (!phone) {
+      console.error('❌ Error: Phone is empty')
       return NextResponse.json({ success: false, error: 'Phone required' }, { status: 400 })
     }
 
@@ -162,39 +148,50 @@ export async function POST(request: NextRequest) {
     const whatsappPassword = process.env.WHATSAPP_API_PASSWORD
 
     if (!whatsappEndpoint || !whatsappUsername || !whatsappPassword) {
+      console.error('❌ Error: Missing ENV variables')
       return NextResponse.json({ success: false, error: 'Config missing' }, { status: 500 })
     }
 
-    // Parse Data Mentah
-    let rawData: AnyFormData
+    // Parse Data
+    let rawData: AnyFormData = {}
     let bookingId: string = bookingIdInput || `HU-${Date.now()}`
 
     if (umrahFormDataJson) {
       const parsed = safeJsonParse<AnyFormData>(umrahFormDataJson, 'umrahFormData')
-      if (!parsed.ok) return NextResponse.json({ success: false, error: parsed.error }, { status: 400 })
-      rawData = parsed.data
+      if (parsed.ok) rawData = parsed.data
     } else if (bookingDataJson) {
       const parsed = safeJsonParse<AnyFormData>(bookingDataJson, 'bookingData')
-      if (!parsed.ok) return NextResponse.json({ success: false, error: parsed.error }, { status: 400 })
-      rawData = parsed.data
-      if (rawData.bookingId) bookingId = rawData.bookingId
-    } else {
-      return NextResponse.json({ success: false, error: 'Data missing' }, { status: 400 })
+      if (parsed.ok) {
+        rawData = parsed.data
+        if (rawData.bookingId) bookingId = rawData.bookingId
+      }
     }
 
-    // 🔥 MAPPING DATA: Mencari value dari berbagai kemungkinan key
-    const pdfData = mapToPdfFormat(rawData)
-    
-    // Debug Log
-    console.log('📝 PDF Data Mapped (FINAL):', JSON.stringify(pdfData, null, 2))
+    // Mapping Data
+    let pdfData
+    try {
+      pdfData = mapToPdfFormat(rawData)
+      console.log('📝 PDF Data Mapped OK')
+    } catch (e) {
+      console.error('❌ Error mapping data:', e)
+      // Fallback ke rawData kalau mapping gagal total
+      pdfData = rawData as any
+    }
 
     // Render PDF
-    const element = React.createElement(HematConfirmationPDF, { 
-      formData: pdfData,  
-      bookingId: bookingId 
-    })
-    
-    const pdfBuffer = await renderToBuffer(element)
+    let pdfBuffer
+    try {
+      console.log('📝 Rendering PDF...')
+      const element = React.createElement(HematConfirmationPDF, { 
+        formData: pdfData,  
+        bookingId: bookingId 
+      })
+      pdfBuffer = await renderToBuffer(element)
+      console.log('✅ PDF Rendered. Buffer size:', pdfBuffer.length)
+    } catch (e: any) {
+      console.error('❌ Fatal Error Rendering PDF:', e)
+      return NextResponse.json({ success: false, error: 'PDF Render Failed: ' + e.message }, { status: 500 })
+    }
 
     // Kirim ke WhatsApp
     const formattedPhone = formatPhoneForWhatsAppJid(phone)
@@ -211,37 +208,32 @@ export async function POST(request: NextRequest) {
     })
 
     const url = `${whatsappEndpoint.replace(/\/$/, '')}/send/file`
-    console.log(`🚀 Sending PDF (${fileName}) to ${formattedPhone}...`)
+    console.log(`🚀 Sending to ${formattedPhone}...`)
 
     const whatsappResponse = await axios.post(url, whatsappForm, {
       headers: { ...whatsappForm.getHeaders() },
       auth: { username: whatsappUsername, password: whatsappPassword },
       timeout: 60000,
-      maxContentLength: Infinity,
-      maxBodyLength: Infinity,
       validateStatus: () => true,
     })
 
     if (whatsappResponse.status >= 200 && whatsappResponse.status < 300) {
-      console.log('✅ PDF Sent Successfully')
-      return NextResponse.json({
-        success: true,
-        message: 'PDF sent successfully',
-        bookingId,
-      })
+      console.log('✅ WA Sent Successfully')
+      return NextResponse.json({ success: true })
     }
 
-    console.error('❌ WA Failed:', whatsappResponse.data)
-    return NextResponse.json({ success: false, error: 'WA Failed', details: whatsappResponse.data }, { status: 502 })
+    console.error('❌ WA API Failed:', whatsappResponse.status, whatsappResponse.data)
+    return NextResponse.json({ success: false, error: 'WA API Failed', details: whatsappResponse.data }, { status: 502 })
 
   } catch (error: any) {
-    console.error('❌ Fatal Error:', error)
+    console.error('❌ Global Route Error:', error)
     return NextResponse.json({ success: false, error: error?.message || 'Unknown error' }, { status: 500 })
   }
 }
 
 export async function GET() {
-  return NextResponse.json({ status: 'ready', version: '5.1-date-fix' })
+  return NextResponse.json({ status: 'ready', version: '5.2-safe-mode' })
 }
+
 
 
