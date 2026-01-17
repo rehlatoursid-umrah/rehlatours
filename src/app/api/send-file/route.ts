@@ -3,24 +3,15 @@ import { renderToBuffer } from '@react-pdf/renderer'
 import HematConfirmationPDF from '@/components/HematConfirmationPDF'
 import FormData from 'form-data'
 import axios from 'axios'
-import React from 'react' // ✅ WAJIB IMPORT REACT
+import React from 'react'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
+// === 1. DEFINISI TIPE DATA ===
 type AnyFormData = Record<string, any>
 
-interface LegacyBookingData {
-  bookingId: string
-  customerName: string
-  email: string
-  whatsappNumber: string
-  phoneNumber: string
-  packageName: string
-  paymentMethod: string
-}
-
-// === HELPER FUNCTIONS ===
+// === 2. HELPER FUNCTIONS ===
 function safeJsonParse<T>(
   value: string,
   label: string,
@@ -40,37 +31,81 @@ function formatPhoneForWhatsAppJid(phone: string): string {
   return formattedPhone
 }
 
-function normalizeData(input: AnyFormData): AnyFormData {
-  const data = input || {}
-  return {
-    ...data,
-    name: data.name ?? data.customerName ?? '',
-    email: data.email ?? '',
-    phone_number: data.phone_number ?? data.phoneNumber ?? '',
-    whatsapp_number: data.whatsapp_number ?? data.whatsappNumber ?? '',
-    address: data.address ?? '',
-    city: data.city ?? '',
-    province: data.province ?? '',
-    umrahpackage: data.umrahpackage ?? data.umrah_package ?? data.packageName ?? '',
-    payment_type: data.payment_type ?? 'tabungan_custom',
-    installmentamount: data.installmentamount ?? data.installment_amount ?? 0,
-    installmentfrequency: data.installmentfrequency ?? data.installment_frequency ?? '',
-    installmentnotes: data.installmentnotes ?? data.installment_notes ?? '',
-    submission_date: data.submission_date ?? data.register_date ?? new Date().toISOString(),
-    gender: data.gender ?? 'male',
-    place_of_birth: data.place_of_birth ?? '',
-    birth_date: data.birth_date ?? '',
+// === 3. FUNGSI MAPPER PENTING (PENERJEMAH DATA) ===
+// Fungsi ini mengubah data mentah dari form (snake_case) menjadi data matang untuk PDF (camelCase)
+function mapToPdfFormat(data: AnyFormData) {
+  const toDateStr = (d?: string | Date) => {
+    if (!d) return '-'
+    try {
+      return new Date(d).toISOString()
+    } catch {
+      return '-'
+    }
   }
-}
 
-function convertLegacyToGeneric(legacyData: LegacyBookingData): AnyFormData {
+  // Mapping Frekuensi
+  const freqMap: Record<string, string> = {
+    daily: 'Harian',
+    weekly: 'Mingguan',
+    monthly: 'Bulanan',
+    flexible: 'Fleksibel'
+  }
+
+  // Mapping Paket (Simple Logic - bisa disesuaikan jika ada lookup)
+  // Karena form mengirim ID paket, kita coba tampilkan ID-nya atau default
+  // Jika Anda mengirim nama paket dari frontend, ganti 'data.package_name' di bawah
+  const paketTitle = data.package_name || data.umrah_package || 'Paket Umrah Hemat'
+
   return {
-    name: legacyData.customerName || '',
-    email: legacyData.email || '',
-    whatsapp_number: legacyData.whatsappNumber || '',
-    phone_number: legacyData.phoneNumber || '',
-    umrahpackage: legacyData.packageName || '',
-    payment_method: legacyData.paymentMethod || '',
+    // Data Pribadi
+    namaLengkap: data.name || data.customerName || '-',
+    jenisKelamin: data.gender === 'male' ? 'Laki-laki' : data.gender === 'female' ? 'Perempuan' : '-',
+    tempatLahir: data.place_of_birth || '-',
+    tglLahir: toDateStr(data.birth_date),
+    namaAyah: data.father_name || '-',
+    namaIbu: data.mother_name || '-',
+    statusPernikahan: data.mariage_status || '-',
+    pekerjaan: data.occupation || '-',
+    
+    // Kontak
+    email: data.email || '-',
+    nomorTelepon: data.phone_number || data.phoneNumber || '-',
+    whatsapp: data.whatsapp_number || data.whatsappNumber || '-',
+    alamatLengkap: data.address || '-',
+    kota: data.city || '-',
+    provinsi: data.province || '-',
+    kodePos: data.postal_code || '-',
+    
+    // Kontak Darurat
+    namaKontakDarurat: data.emergency_contact_name || '-',
+    hubunganKontak: data.relationship || '-',
+    telpKontakDarurat: data.emergency_contact_phone || '-',
+    
+    // Dokumen
+    nik: data.nik_number || '-',
+    nomorPaspor: data.passport_number || '-',
+    tglPenerbitanPaspor: toDateStr(data.date_of_issue),
+    tglKadaluarsaPaspor: toDateStr(data.expiry_date),
+    tempatPenerbitanPaspor: data.place_of_issue || '-',
+    
+    // Kesehatan
+    memilikiPenyakit: Boolean(data.specific_disease),
+    detailPenyakit: data.illness || '-',
+    kebutuhanKhusus: Boolean(data.special_needs),
+    butuhKursiRoda: Boolean(data.wheelchair),
+    
+    // Pengalaman
+    pernahUmrah: Boolean(data.has_performed_umrah),
+    pernahHaji: Boolean(data.has_performed_hajj),
+    
+    // Paket & Pembayaran
+    paketUmrah: paketTitle,
+    hargaPaket: 0, // Harga tidak dikirim dari form, set 0 atau sesuaikan
+    metodePembayaran: 'Tabungan Umrah',
+    rencanaSetoran: Number(data.installment_amount) || 0,
+    frekuensiSetoran: data.installment_frequency ? (freqMap[data.installment_frequency] || data.installment_frequency) : '-',
+    catatanTabungan: data.installment_notes || '-',
+    tglPendaftaran: toDateStr(data.register_date || data.submission_date || new Date())
   }
 }
 
@@ -78,16 +113,21 @@ function convertLegacyToGeneric(legacyData: LegacyBookingData): AnyFormData {
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
+    
+    // Ambil field dasar
     const phone = (formData.get('phone') as string | null)?.trim() || ''
     const bookingIdInput = (formData.get('bookingId') as string | null)?.trim()
+    const caption = ((formData.get('caption') as string | null) ?? '') || 'Konfirmasi Pendaftaran'
+
+    // Ambil JSON Data
     const umrahFormDataJson = (formData.get('umrahFormData') as string | null)?.trim()
     const bookingDataJson = (formData.get('bookingData') as string | null)?.trim()
-    const caption = ((formData.get('caption') as string | null) ?? '') || 'Konfirmasi Pendaftaran'
 
     if (!phone) {
       return NextResponse.json({ success: false, error: 'Phone required' }, { status: 400 })
     }
 
+    // Config Check
     const whatsappEndpoint = process.env.WHATSAPP_API_ENDPOINT
     const whatsappUsername = process.env.WHATSAPP_API_USERNAME
     const whatsappPassword = process.env.WHATSAPP_API_PASSWORD
@@ -96,57 +136,39 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Config missing' }, { status: 500 })
     }
 
-    // Parse Data
-    let parsedData: AnyFormData
+    // Parse Data Mentah
+    let rawData: AnyFormData
     let bookingId: string = bookingIdInput || `HU-${Date.now()}`
 
     if (umrahFormDataJson) {
       const parsed = safeJsonParse<AnyFormData>(umrahFormDataJson, 'umrahFormData')
       if (!parsed.ok) return NextResponse.json({ success: false, error: parsed.error }, { status: 400 })
-      parsedData = parsed.data
+      rawData = parsed.data
     } else if (bookingDataJson) {
-      const parsed = safeJsonParse<LegacyBookingData>(bookingDataJson, 'bookingData')
+      const parsed = safeJsonParse<AnyFormData>(bookingDataJson, 'bookingData')
       if (!parsed.ok) return NextResponse.json({ success: false, error: parsed.error }, { status: 400 })
-      parsedData = convertLegacyToGeneric(parsed.data)
-      bookingId = parsed.data.bookingId || bookingId
+      rawData = parsed.data
+      if (rawData.bookingId) bookingId = rawData.bookingId
     } else {
       return NextResponse.json({ success: false, error: 'Data missing' }, { status: 400 })
     }
 
-    const normalizedData = normalizeData(parsedData)
+    // 🔥 VITAL STEP: Lakukan Mapping Data Sebelum Render PDF 🔥
+    // Ini yang memperbaiki masalah data kosong "-"
+    const pdfData = mapToPdfFormat(rawData)
     
-    // Props untuk PDF
-    const pdfProps = {
-      formData: {
-        name: normalizedData.name,
-        email: normalizedData.email,
-        phone_number: normalizedData.phone_number,
-        whatsapp_number: normalizedData.whatsapp_number,
-        gender: normalizedData.gender,
-        place_of_birth: normalizedData.place_of_birth,
-        birth_date: normalizedData.birth_date,
-        address: normalizedData.address,
-        city: normalizedData.city,
-        province: normalizedData.province,
-        umrahpackage: normalizedData.umrahpackage,
-        installmentamount: normalizedData.installmentamount,
-        installmentfrequency: normalizedData.installmentfrequency,
-        installmentnotes: normalizedData.installmentnotes,
-        submission_date: normalizedData.submission_date,
-        booking_id: bookingId,
-      },
-      bookingId: bookingId
-    }
+    // Debug Log (Cek di Vercel Logs apakah data sudah benar)
+    console.log('📝 PDF Data Mapped:', JSON.stringify(pdfData, null, 2))
 
-    // ✅ FIXED: Gunakan createElement agar valid di file .ts
-    // (Menggantikan <HematConfirmationPDF ... />)
+    // Render PDF dengan React.createElement
     const element = React.createElement(HematConfirmationPDF, { 
-      formData: pdfProps.formData, 
-      bookingId: pdfProps.bookingId 
+      formData: pdfData,  // Kirim data yang SUDAH dimapping
+      bookingId: bookingId 
     })
     
     const pdfBuffer = await renderToBuffer(element)
 
+    // Kirim ke WhatsApp
     const formattedPhone = formatPhoneForWhatsAppJid(phone)
     const safeBookingId = bookingId.replace(/[^a-zA-Z0-9-_]/g, '')
     const fileName = `confirmation-${safeBookingId}.pdf`
@@ -191,5 +213,5 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
-  return NextResponse.json({ status: 'ready', version: '4.1-ts-fix' })
+  return NextResponse.json({ status: 'ready', version: '4.2-data-fix' })
 }
