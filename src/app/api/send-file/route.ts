@@ -49,14 +49,13 @@ function mapToPdfFormat(data: AnyFormData) {
       
       if (!rawVal) return '-'
       
-      // Cek apakah sudah string ISO/Date?
       const d = new Date(rawVal)
-      if (isNaN(d.getTime())) return '-' // Invalid date
+      if (isNaN(d.getTime())) return '-' 
       
-      return d.toISOString() // Pasti return string ISO valid
+      return d.toISOString() 
     } catch (e) {
       console.error('Error parsing date:', e)
-      return '-' // Fallback aman
+      return '-' 
     }
   }
 
@@ -115,9 +114,12 @@ function mapToPdfFormat(data: AnyFormData) {
     pernahUmrah: Boolean(pick(data, ['has_performed_umrah', 'hasperformedumrah'], false)),
     pernahHaji: Boolean(pick(data, ['has_performed_hajj', 'hasperformedhajj'], false)),
     
-    // Paket
+    // Paket & Pembayaran (SUDAH UPDATE BACA HARGA & NAMA PAKET)
     paketUmrah: pick(data, ['package_name', 'umrah_package', 'umrahpackage'], 'Paket Umrah Hemat'),
-    hargaPaket: 0,
+    
+    // 🔥 INI BAGIAN PENTING YANG DIUPDATE:
+    hargaPaket: Number(pick(data, ['package_price', 'price', 'hargaPaket'], 0)), 
+
     metodePembayaran: 'Tabungan Umrah',
     rencanaSetoran: Number(pick(data, ['installment_amount', 'installmentamount'], 0)) || 0,
     frekuensiSetoran: frekuensiBersih,
@@ -142,7 +144,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Phone required' }, { status: 400 })
     }
 
-    // Config Check
     const whatsappEndpoint = process.env.WHATSAPP_API_ENDPOINT
     const whatsappUsername = process.env.WHATSAPP_API_USERNAME
     const whatsappPassword = process.env.WHATSAPP_API_PASSWORD
@@ -171,10 +172,9 @@ export async function POST(request: NextRequest) {
     let pdfData
     try {
       pdfData = mapToPdfFormat(rawData)
-      console.log('📝 PDF Data Mapped OK')
+      console.log('📝 PDF Data Mapped OK:', JSON.stringify(pdfData, null, 2))
     } catch (e) {
       console.error('❌ Error mapping data:', e)
-      // Fallback ke rawData kalau mapping gagal total
       pdfData = rawData as any
     }
 
@@ -232,8 +232,5 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
-  return NextResponse.json({ status: 'ready', version: '5.2-safe-mode' })
+  return NextResponse.json({ status: 'ready', version: '5.3-final-price-fix' })
 }
-
-
-
