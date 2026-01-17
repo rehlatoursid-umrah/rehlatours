@@ -624,4 +624,3 @@ export default function HematConfirmationPDF({ formData, bookingId }: Confirmati
     </Document>
   )
 }
-
