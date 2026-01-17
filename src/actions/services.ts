@@ -268,34 +268,47 @@ export async function submitHematUmrahForm(formData: any): Promise<SubmitRespons
       style: 'currency', currency: 'IDR', minimumFractionDigits: 0
     }) || '0'
 
+    const freqMap: Record<string, string> = {
+      daily: 'Harian',
+      weekly: 'Mingguan',
+      monthly: 'Bulanan',
+      flexible: 'Fleksibel'
+    }
+    const freqLabel = freqMap[cleanData.installmentfrequency] || cleanData.installmentfrequency
+
     // 🔥 Gabungkan Data Paket Asli ke Data Form untuk PDF
     const dataForPdf = { 
       ...cleanData, 
       booking_id: bookingId,
-      package_name: packageDetail.name, // Kirim Nama Paket Asli
-      package_price: packageDetail.price // Kirim Harga Paket Asli
+      package_name: packageDetail.name, 
+      package_price: packageDetail.price 
     }
 
-    const captionCustomer = `🕌 *Konfirmasi Pendaftaran Umrah Hemat*
+    // 🔥 UPDATE: Caption BC sesuai permintaan Anda
+    const captionCustomer = `Assalamu'alaikum ${cleanData.name},
 
-Assalamu'alaikum ${cleanData.name},
+Alhamdulillah! Pendaftaran program tabungan umrah Anda telah berhasil dicatat.
 
-Alhamdulillah! Pendaftaran Anda berhasil.
+📋 Detail Pendaftaran:
+* Booking ID: ${bookingId}
+* Nama: ${cleanData.name}
+* Paket: ${packageDetail.name}
+* Rencana Setoran: ${formattedInstallment}
+* Frekuensi: ${freqLabel}
 
-📋 *Detail:*
-• Booking ID: ${bookingId}
-• Paket: ${packageDetail.name}
-• Rencana Setoran: ${formattedInstallment}
+Terlampir dokumen konfirmasi pendaftaran lengkap (PDF). 
+Tim kami akan segera menghubungi Anda untuk verifikasi selanjutnya.
 
-Terlampir dokumen PDF lengkap.
-*Rehla Tours Team*`
+Jazakallahu khairan,
+Rehla Tours Team`
 
     const captionAdmin = `📥 *Pendaftaran Baru*
     
 ID: ${bookingId}
 Nama: ${cleanData.name}
 Paket: ${packageDetail.name}
-Setoran: ${formattedInstallment}`
+Setoran: ${formattedInstallment}
+Frekuensi: ${freqLabel}`
 
     // 6. Send WA
     Promise.allSettled([
@@ -320,4 +333,5 @@ Setoran: ${formattedInstallment}`
     return { success: false, error: 'Terjadi kesalahan sistem.' }
   }
 }
+
 
