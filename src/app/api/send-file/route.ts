@@ -32,24 +32,33 @@ function formatPhoneForWhatsAppJid(phone: string): string {
 }
 
 // === 3. FUNGSI MAPPER (PENERJEMAH DATA CERDAS) ===
-// Helper 'pick': Cari nilai dari beberapa kemungkinan key.
-// Contoh: pick(data, ['nik_number', 'niknumber']) -> akan cari 'nik_number' dulu, kalau kosong cari 'niknumber'
 const pick = (obj: any, keys: string[], fallback: any = '-') => {
   for (const k of keys) {
     const v = obj?.[k]
-    // Cek jika ada isinya (tidak null/undefined/string kosong)
     if (v !== undefined && v !== null && v !== '') return v
   }
   return fallback
 }
 
 function mapToPdfFormat(data: AnyFormData) {
-  const toDateStr = (val: any) => {
-    // Ambil value pakai pick dulu
-    const d = typeof val === 'object' ? val : pick(data, Array.isArray(val) ? val : [val], null)
-    if (!d) return '-'
+  // 🔥 FIX DATE: Helper tanggal yang lebih kuat
+  const toDateStr = (keys: string | string[]) => {
+    // 1. Ambil raw value menggunakan pick
+    const keyList = Array.isArray(keys) ? keys : [keys]
+    const rawVal = pick(data, keyList, null)
+    
+    // 2. Jika kosong, return null (nanti jadi '-')
+    if (!rawVal) return '-'
+
     try {
-      return new Date(d).toISOString()
+      // 3. Coba bikin object Date
+      const dateObj = new Date(rawVal)
+      
+      // 4. Cek validitas date
+      if (isNaN(dateObj.getTime())) return '-'
+      
+      // 5. Return ISO string agar konsisten dibaca helper format di PDF
+      return dateObj.toISOString()
     } catch {
       return '-'
     }
@@ -73,7 +82,10 @@ function mapToPdfFormat(data: AnyFormData) {
     namaLengkap: pick(data, ['name', 'customerName', 'namaLengkap']),
     jenisKelamin: data.gender === 'male' ? 'Laki-laki' : data.gender === 'female' ? 'Perempuan' : '-',
     tempatLahir: pick(data, ['place_of_birth', 'placeofbirth', 'tempatLahir']),
+    
+    // 🔥 Panggil toDateStr dengan list kemungkinan key
     tglLahir: toDateStr(['birth_date', 'birthdate', 'tglLahir']),
+    
     namaAyah: pick(data, ['father_name', 'fathername', 'namaAyah']),
     namaIbu: pick(data, ['mother_name', 'mothername', 'namaIbu']),
     statusPernikahan: pick(data, ['mariage_status', 'mariagestatus', 'statusPernikahan']),
@@ -96,8 +108,11 @@ function mapToPdfFormat(data: AnyFormData) {
     // --- Dokumen ---
     nik: pick(data, ['nik_number', 'niknumber', 'nik']),
     nomorPaspor: pick(data, ['passport_number', 'passportnumber', 'nomorPaspor']),
+    
+    // 🔥 Panggil toDateStr untuk paspor
     tglPenerbitanPaspor: toDateStr(['date_of_issue', 'dateofissue']),
     tglKadaluarsaPaspor: toDateStr(['expiry_date', 'expirydate']),
+    
     tempatPenerbitanPaspor: pick(data, ['place_of_issue', 'placeofissue']),
     
     // --- Kesehatan ---
@@ -117,6 +132,8 @@ function mapToPdfFormat(data: AnyFormData) {
     rencanaSetoran: Number(pick(data, ['installment_amount', 'installmentamount'], 0)),
     frekuensiSetoran: frekuensiBersih,
     catatanTabungan: pick(data, ['installment_notes', 'installmentnotes']),
+    
+    // 🔥 Panggil toDateStr untuk tanggal daftar
     tglPendaftaran: toDateStr(['register_date', 'registerdate', 'submission_date'])
   }
 }
@@ -165,10 +182,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Data missing' }, { status: 400 })
     }
 
-    // 🔥 MAPPING DATA: Mencari value dari berbagai kemungkinan key (snake_case atau lowercase)
+    // 🔥 MAPPING DATA: Mencari value dari berbagai kemungkinan key
     const pdfData = mapToPdfFormat(rawData)
     
-    // Debug Log (PENTING: Cek log ini jika masih ada strip '-')
+    // Debug Log
     console.log('📝 PDF Data Mapped (FINAL):', JSON.stringify(pdfData, null, 2))
 
     // Render PDF
@@ -224,6 +241,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
-  return NextResponse.json({ status: 'ready', version: '5.0-smart-mapping' })
+  return NextResponse.json({ status: 'ready', version: '5.1-date-fix' })
 }
+
 
